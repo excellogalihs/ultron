@@ -232,6 +232,13 @@ def _system_prompt(query):
         "using this local clock. If a date or start time is uncertain, ask before scheduling."
     )
 
+    if settings.get("web_search_enabled", "1") == "1":
+        prompt += (
+            "\nWeb search is available. When the user asks about current events, live information, "
+            "facts outside your cutoff, or explicitly asks to search the web, use the `web_search` tool "
+            "and cite sources using markdown links [Title](URL)."
+        )
+
     if settings.get("use_memory", "1") == "1":
         memories = relevant_memories(get_db(), query)
         if memories:

@@ -237,12 +237,16 @@
             activity.className = "msg__tool-status";
             const actionLabel = event.data.name.replaceAll("_", " ");
             activity.textContent = !event.data.ok
-              ? `Workspace action needs correction · ${actionLabel}`
-              : event.data.requires_approval
-                ? `Suggestion ready for review · ${actionLabel}`
-                : event.data.changed
-                  ? `Updated local workspace · ${actionLabel}`
-                  : `Checked local workspace · ${actionLabel}`;
+              ? `Action needs correction · ${actionLabel}`
+              : event.data.name === "web_search"
+                ? `Searched DuckDuckGo · ${actionLabel}`
+                : event.data.name === "fetch_webpage"
+                  ? `Retrieved web page · ${actionLabel}`
+                  : event.data.requires_approval
+                    ? `Suggestion ready for review · ${actionLabel}`
+                    : event.data.changed
+                      ? `Updated local workspace · ${actionLabel}`
+                      : `Checked local workspace · ${actionLabel}`;
             target.body.replaceChildren(activity, target.textSpan, target.cursor);
           } else if (event.event === "done") {
             completed = true;
@@ -538,4 +542,137 @@
       startStream(null);
     }
   }
+
+  // Web search toggle chip
+  const webChip = document.getElementById("chat-web-chip");
+  let webSearchActive = (app.dataset.webSearch !== "0");
+  if (webChip) {
+    webChip.addEventListener("click", () => {
+      webSearchActive = !webSearchActive;
+      webChip.classList.toggle("is-active", webSearchActive);
+      webChip.setAttribute("aria-pressed", webSearchActive ? "true" : "false");
+    });
+  }
+
+  // Voice Input (Speech-to-Text)
+  const micBtn = document.getElementById("chat-mic");
+  let recognition = null;
+  let isListening = false;
+
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (micBtn && SpeechRec) {
+    recognition = new SpeechRec();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || "en-US";
+
+    let priorValue = "";
+
+    recognition.onstart = () => {
+      isListening = true;
+      micBtn.classList.add("is-listening");
+      micBtn.title = "Listening… click to stop";
+      priorValue = input.value;
+    };
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        interim += event.results[i][0].transcript;
+      }
+      input.value = (priorValue ? priorValue + " " : "") + interim;
+      autoResize();
+    };
+
+    recognition.onerror = (event) => {
+      console.warn("Speech recognition error:", event.error);
+      isListening = false;
+      micBtn.classList.remove("is-listening");
+      micBtn.title = "Voice input (Speech to text)";
+    };
+
+    recognition.onend = () => {
+      isListening = false;
+      micBtn.classList.remove("is-listening");
+      micBtn.title = "Voice input (Speech to text)";
+    };
+
+    micBtn.addEventListener("click", () => {
+      if (isListening) {
+        recognition.stop();
+      } else {
+        try {
+          recognition.start();
+        } catch (e) {
+          console.warn("Could not start speech recognition:", e);
+        }
+      }
+    });
+  } else if (micBtn) {
+    micBtn.addEventListener("click", () => {
+      Ultron.toast("Speech recognition is not supported in this browser.", "error");
+    });
+  }
+
+  // Text-to-Speech (TTS)
+  const autoSpeak = (app.dataset.autoSpeak === "1");
+
+  const speakText = (text, button) => {
+    if (!window.speechSynthesis) return;
+
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      document.querySelectorAll(".msg__speak.is-speaking").forEach(b => b.classList.remove("is-speaking"));
+      if (button && button.dataset.speaking === "true") {
+        button.dataset.speaking = "false";
+        return;
+      }
+    }
+
+    // Strip basic markdown/urls for cleaner speech
+    const clean = text
+      .replace(/```[\s\S]*?```/g, " code block omitted ")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/[*_#>-]/g, " ")
+      .trim();
+
+    if (!clean) return;
+
+    const utter = new SpeechSynthesisUtterance(clean);
+    utter.rate = 1.0;
+    utter.pitch = 1.0;
+
+    if (button) {
+      button.classList.add("is-speaking");
+      button.dataset.speaking = "true";
+      utter.onend = () => {
+        button.classList.remove("is-speaking");
+        button.dataset.speaking = "false";
+      };
+      utter.onerror = () => {
+        button.classList.remove("is-speaking");
+        button.dataset.speaking = "false";
+      };
+    }
+
+    window.speechSynthesis.speak(utter);
+  };
+
+  const bindSpeakButtons = () => {
+    document.querySelectorAll(".msg__speak").forEach((button) => {
+      if (button.dataset.bound) return;
+      button.dataset.bound = "true";
+      button.addEventListener("click", () => {
+        const msgBody = button.closest(".msg")?.querySelector(".msg__body");
+        if (msgBody) {
+          speakText(msgBody.textContent, button);
+        }
+      });
+    });
+  };
+
+  bindSpeakButtons();
+
 })();

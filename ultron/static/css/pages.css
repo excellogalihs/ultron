@@ -2356,3 +2356,84 @@ body[data-page="chat"] .main {
     margin-left: 0;
   }
 }
+
+/* Voice & Chip enhancements */
+.composer__mic {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  color: var(--text-dim);
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.composer__mic:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.composer__mic.is-listening {
+  color: #ffffff;
+  background: var(--danger);
+  border-color: var(--danger);
+  animation: pulse-mic 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-mic {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.85; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.composer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.composer-chip:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.composer-chip.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-bright);
+}
+
+.composer__meta-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.msg__speak {
+  margin-left: auto;
+  padding: 2px 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.msg:hover .msg__speak,
+.msg__speak.is-speaking {
+  opacity: 1;
+}
+
+.msg__speak.is-speaking {
+  color: var(--accent-bright);
+  animation: pulse-mic 1s infinite ease-in-out;
+}

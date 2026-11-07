@@ -31,6 +31,9 @@
   const suggestionBody = document.getElementById("doc-suggestion-body");
   const suggestionAccept = document.getElementById("doc-ai-accept");
   const suggestionReject = document.getElementById("doc-ai-reject");
+  const exportButton = document.getElementById("doc-export-btn");
+  const importButton = document.getElementById("doc-import-btn");
+  const importFileInput = document.getElementById("doc-import-file");
   const folderDialog = document.getElementById("folder-dialog");
   const folderForm = document.getElementById("folder-form");
   const folderName = document.getElementById("folder-name");
@@ -188,6 +191,10 @@
         history.replaceState(null, "", `/documents?doc=${currentId}`);
         assistant.hidden = false;
         deleteButton.hidden = false;
+        if (exportButton) {
+          exportButton.href = `/api/documents/${currentId}/export`;
+          exportButton.style.display = "inline-flex";
+        }
         updated.textContent = `Updated ${formatDateTime(savedDoc.updated_at)}`;
         if (revision === savedRevision) {
           dirty = false;
@@ -220,6 +227,10 @@
     empty.hidden = true;
     assistant.hidden = false;
     deleteButton.hidden = false;
+    if (exportButton) {
+      exportButton.href = `/api/documents/${doc.id}/export`;
+      exportButton.style.display = "inline-flex";
+    }
     dirty = false;
     revision += 1;
     setStatus("Saved locally");
@@ -529,4 +540,41 @@
     form.hidden = true;
     empty.hidden = false;
   }
+
+  if (importButton && importFileInput) {
+    importButton.addEventListener("click", () => {
+      importFileInput.click();
+    });
+
+    importFileInput.addEventListener("change", async () => {
+      const file = importFileInput.files[0];
+      if (!file) return;
+
+      try {
+        const textContent = await file.text();
+        const baseTitle = file.name.replace(/\.[^/.]+$/, "") || "Imported Document";
+        const fmt = file.name.toLowerCase().endsWith(".md") || file.name.toLowerCase().endsWith(".markdown") ? "markdown" : "text";
+        const folderVal = folderFilter.value === "none" ? null : (folderFilter.value || null);
+
+        const result = await Ultron.api("/api/documents/import", {
+          method: "POST",
+          body: {
+            title: baseTitle,
+            content: textContent,
+            format: fmt,
+            folder_id: folderVal,
+          },
+        });
+
+        if (result && result.document) {
+          window.location.href = `/documents?doc=${result.document.id}`;
+        }
+      } catch (err) {
+        Ultron.toast("Failed to import document: " + (err.message || err), "error");
+      } finally {
+        importFileInput.value = "";
+      }
+    });
+  }
+
 })();

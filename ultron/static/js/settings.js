@@ -99,4 +99,46 @@
   };
 
   testButton.click();
+
+  // Live appearance preview
+  const themeSelect = document.getElementById("theme");
+  const accentSelect = document.getElementById("accent");
+  const fontSelect = document.getElementById("font");
+
+  if (themeSelect) {
+    themeSelect.addEventListener("change", () => {
+      document.documentElement.dataset.theme = themeSelect.value;
+    });
+  }
+  if (accentSelect) {
+    accentSelect.addEventListener("change", () => {
+      document.documentElement.dataset.accent = accentSelect.value;
+    });
+  }
+  if (fontSelect) {
+    fontSelect.addEventListener("change", () => {
+      document.documentElement.dataset.font = fontSelect.value;
+    });
+  }
+
+  // Restore JSON trigger
+  const restoreTrigger = document.getElementById("restore-trigger-btn");
+  const restoreForm = document.getElementById("restore-form");
+  const restoreFileInput = document.getElementById("restore-file-input");
+
+  if (restoreTrigger && restoreForm && restoreFileInput) {
+    restoreTrigger.addEventListener("click", () => {
+      restoreFileInput.click();
+    });
+    restoreFileInput.addEventListener("change", () => {
+      if (!restoreFileInput.files.length) return;
+      const file = restoreFileInput.files[0];
+      if (confirm(`Restoring from "${file.name}" will replace all current workspace documents, tasks, events, and memories with the backup data. Continue?`)) {
+        restoreForm.submit();
+      } else {
+        restoreFileInput.value = "";
+      }
+    });
+  }
+
 })();

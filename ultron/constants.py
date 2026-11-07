@@ -20,6 +20,10 @@ SUPPORTED_MODELS = (
 
 SUPPORTED_MODEL_IDS = tuple(model["id"] for model in SUPPORTED_MODELS)
 
+THEMES = ("dark", "oled", "light", "nord")
+ACCENTS = ("violet", "emerald", "cyan", "amber", "rose", "monochrome")
+FONTS = ("jetbrains", "sans", "plex")
+
 DEFAULT_SETTINGS = {
     "operator_name": "Operator",
     "default_model": DEFAULT_MODEL,
@@ -31,6 +35,13 @@ DEFAULT_SETTINGS = {
     ),
     "use_memory": "1",
     "temperature": "0.7",
+    "theme": "dark",
+    "accent": "violet",
+    "font": "jetbrains",
+    "web_search_enabled": "1",
+    "voice_enabled": "1",
+    "voice_auto_speak": "0",
+    "chat_send_key": "enter",
 }
 
 TASK_PRIORITIES = ("high", "normal", "low")

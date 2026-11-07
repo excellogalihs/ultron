@@ -302,5 +302,160 @@ class ProductivityWorkspaceTests(unittest.TestCase):
         self.assertNotIn(b"Nothing scheduled today", page.data)
 
 
+
+
+class WebSearchAndFileToolsTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.database = self.root / "workspace.db"
+        connection = sqlite3.connect(self.database)
+        schema = Path(__file__).resolve().parents[1] / "ultron" / "schema.sql"
+        connection.executescript(schema.read_text(encoding="utf-8"))
+        connection.close()
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_local_file_read_and_create_tools_restricted_to_workspace(self):
+        # Create a file
+        created = execute_tool(
+            str(self.database),
+            "create_local_file",
+            {"path": "notes/project.txt", "content": "Ultron local project notes"},
+            workspace_root=str(self.root),
+        )
+        self.assertTrue(created["created"])
+        self.assertEqual(created["path"], "notes/project.txt")
+
+        # Read the file
+        read_res = execute_tool(
+            str(self.database),
+            "read_local_file",
+            {"path": "notes/project.txt"},
+            workspace_root=str(self.root),
+        )
+        self.assertEqual(read_res["content"], "Ultron local project notes")
+
+        # Reject path traversal
+        with self.assertRaises(ToolError):
+            execute_tool(
+                str(self.database),
+                "read_local_file",
+                {"path": "../../etc/passwd"},
+                workspace_root=str(self.root),
+            )
+
+        # Reject forbidden extensions
+        with self.assertRaises(ToolError):
+            execute_tool(
+                str(self.database),
+                "create_local_file",
+                {"path": "malicious.exe", "content": "bin"},
+                workspace_root=str(self.root),
+            )
+
+    def test_web_search_and_fetch_tools(self):
+        from ultron.services import web_search
+
+        with patch.object(
+            web_search,
+            "search",
+            return_value={"ok": True, "results": [{"title": "Ollama", "url": "https://ollama.com", "snippet": "Local LLMs"}]},
+        ):
+            res = execute_tool(str(self.database), "web_search", {"query": "ollama"})
+            self.assertEqual(len(res["results"]), 1)
+            self.assertEqual(res["results"][0]["title"], "Ollama")
+
+        with patch.object(
+            web_search,
+            "fetch_page_text",
+            return_value={"ok": True, "text": "Extracted content from page."},
+        ):
+            fetch_res = execute_tool(str(self.database), "fetch_webpage", {"url": "https://example.com"})
+            self.assertEqual(fetch_res["content"], "Extracted content from page.")
+
+
+class DocumentImportExportAndSettingsTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.app = create_app(
+            {
+                "TESTING": True,
+                "DATABASE": str(Path(self.temporary.name) / "workspace.db"),
+            }
+        )
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_document_import_and_export(self):
+        # Import JSON
+        res = self.client.post(
+            "/api/documents/import",
+            json={"title": "Imported Specs", "content": "# Specifications\nLocal first."},
+        )
+        self.assertEqual(res.status_code, 201)
+        doc_id = res.get_json()["document"]["id"]
+
+        # Export single document
+        export_res = self.client.get(f"/api/documents/{doc_id}/export")
+        self.assertEqual(export_res.status_code, 200)
+        self.assertIn("Specifications", export_res.get_data(as_text=True))
+        self.assertEqual(export_res.headers["Content-Disposition"], 'attachment; filename="Imported Specs.md"')
+
+        # Export all documents
+        export_all = self.client.get("/api/documents/export-all")
+        self.assertEqual(export_all.status_code, 200)
+        payload = json.loads(export_all.get_data(as_text=True))
+        self.assertEqual(payload["count"], 1)
+
+    def test_settings_save_and_backup_restore(self):
+        # Save custom theme and preferences
+        save_res = self.client.post(
+            "/settings",
+            data={
+                "operator_name": "Commander",
+                "default_model": "gemma3:1b",
+                "ollama_url": "http://localhost:11434",
+                "temperature": "0.5",
+                "system_prompt": "Custom prompt",
+                "use_memory": "1",
+                "theme": "nord",
+                "accent": "emerald",
+                "font": "sans",
+                "web_search_enabled": "1",
+                "voice_enabled": "1",
+                "voice_auto_speak": "0",
+                "chat_send_key": "ctrl_enter",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(save_res.status_code, 200)
+
+        # Export JSON backup
+        export_res = self.client.get("/settings/export")
+        self.assertEqual(export_res.status_code, 200)
+        backup_data = export_res.get_data()
+
+        # Add a new task
+        self.client.post("/api/tasks", json={"title": "Temporary task before restore"})
+
+        # Restore from backup
+        import io
+        restore_res = self.client.post(
+            "/settings/restore",
+            data={"backup_file": (io.BytesIO(backup_data), "backup.json")},
+            content_type="multipart/form-data",
+            follow_redirects=True,
+        )
+        self.assertEqual(restore_res.status_code, 200)
+        self.assertIn(b"Workspace data and settings restored successfully", restore_res.data)
+
+        # Temporary task should be gone
+        tasks = self.client.get("/api/tasks").get_json()["tasks"]
+        self.assertEqual(len(tasks), 0)
+
 if __name__ == "__main__":
     unittest.main()

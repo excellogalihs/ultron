@@ -4,7 +4,7 @@
 
 {% block content %}
 {% set current_model = conversation.model if conversation else settings.default_model %}
-<div class="chat-shell" id="chat-app"
+<div class="chat-shell" id="chat-app" data-send-key="{{ settings.chat_send_key or 'enter' }}" data-auto-speak="{{ settings.voice_auto_speak or '0' }}" data-web-search="{{ settings.web_search_enabled or '1' }}"
      data-conversation-id="{{ conversation.id if conversation else '' }}"
      data-conversation-title="{{ conversation.title if conversation else '' }}"
      data-default-model="{{ current_model }}">
@@ -66,6 +66,9 @@
         <div class="msg__meta">
           <span class="msg__role">{{ 'YOU' if message.role == 'user' else 'ULTRON' }}</span>
           <time datetime="{{ message.created_at }}">{{ message.created_at|humanize }}</time>
+          {% if message.role == 'assistant' and settings.voice_enabled == '1' %}
+          <button class="msg__speak icon-btn" type="button" title="Read response aloud" aria-label="Read response aloud">{{ icon('speaker', 13) }}</button>
+          {% endif %}
         </div>
         <div class="msg__body">{{ message.content }}</div>
       </div>

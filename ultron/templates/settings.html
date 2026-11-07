@@ -36,6 +36,82 @@
 
     <section class="panel settings-section">
       <div class="settings-section__head">
+        <span class="settings-section__icon">{{ icon('spark', 16) }}</span>
+        <div>
+          <h2>Appearance</h2>
+          <p>Theme, accent colors, and typography.</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="theme">Color theme</label>
+        <select id="theme" name="theme">
+          <option value="dark"{% if settings.theme == 'dark' %} selected{% endif %}>Dark Onyx (Default)</option>
+          <option value="oled"{% if settings.theme == 'oled' %} selected{% endif %}>OLED Black</option>
+          <option value="light"{% if settings.theme == 'light' %} selected{% endif %}>Light Paper</option>
+          <option value="nord"{% if settings.theme == 'nord' %} selected{% endif %}>Nord Dim</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="accent">Accent color</label>
+        <select id="accent" name="accent">
+          <option value="violet"{% if settings.accent == 'violet' %} selected{% endif %}>Violet (Default)</option>
+          <option value="emerald"{% if settings.accent == 'emerald' %} selected{% endif %}>Emerald</option>
+          <option value="cyan"{% if settings.accent == 'cyan' %} selected{% endif %}>Cyan</option>
+          <option value="amber"{% if settings.accent == 'amber' %} selected{% endif %}>Amber</option>
+          <option value="rose"{% if settings.accent == 'rose' %} selected{% endif %}>Rose</option>
+          <option value="monochrome"{% if settings.accent == 'monochrome' %} selected{% endif %}>Monochrome</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="font">Font family</label>
+        <select id="font" name="font">
+          <option value="jetbrains"{% if settings.font == 'jetbrains' %} selected{% endif %}>JetBrains Mono (Code-first)</option>
+          <option value="sans"{% if settings.font == 'sans' %} selected{% endif %}>Modern Sans (Clean UI)</option>
+          <option value="plex"{% if settings.font == 'plex' %} selected{% endif %}>IBM Plex Mono</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="panel settings-section">
+      <div class="settings-section__head">
+        <span class="settings-section__icon">{{ icon('globe', 16) }}</span>
+        <div>
+          <h2>Search &amp; voice</h2>
+          <p>Online capabilities and speech input/output.</p>
+        </div>
+      </div>
+      <label class="switch-row" for="web_search_enabled">
+        <span class="switch-row__copy">
+          <span class="switch-row__title">DuckDuckGo web search</span>
+          <span class="switch-row__desc">Allow assistant to search the web for fresh information and cite sources.</span>
+        </span>
+        <input class="switch-input" type="checkbox" id="web_search_enabled" name="web_search_enabled" value="1"{% if settings.web_search_enabled == '1' %} checked{% endif %}>
+      </label>
+      <label class="switch-row" for="voice_enabled">
+        <span class="switch-row__copy">
+          <span class="switch-row__title">Voice input (Speech-to-text)</span>
+          <span class="switch-row__desc">Enables the microphone button in chat using the browser Web Speech API.</span>
+        </span>
+        <input class="switch-input" type="checkbox" id="voice_enabled" name="voice_enabled" value="1"{% if settings.voice_enabled == '1' %} checked{% endif %}>
+      </label>
+      <label class="switch-row" for="voice_auto_speak">
+        <span class="switch-row__copy">
+          <span class="switch-row__title">Auto-speak assistant replies</span>
+          <span class="switch-row__desc">Automatically read responses aloud using text-to-speech when speech finishes.</span>
+        </span>
+        <input class="switch-input" type="checkbox" id="voice_auto_speak" name="voice_auto_speak" value="1"{% if settings.voice_auto_speak == '1' %} checked{% endif %}>
+      </label>
+      <div class="field" style="margin-top: 12px;">
+        <label for="chat_send_key">Chat send shortcut</label>
+        <select id="chat_send_key" name="chat_send_key">
+          <option value="enter"{% if settings.chat_send_key == 'enter' %} selected{% endif %}>Enter sends, Shift+Enter for newline</option>
+          <option value="ctrl_enter"{% if settings.chat_send_key == 'ctrl_enter' %} selected{% endif %}>Ctrl+Enter / Cmd+Enter sends, Enter for newline</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="panel settings-section">
+      <div class="settings-section__head">
         <span class="settings-section__icon">{{ icon('cpu', 16) }}</span>
         <div>
           <h2>AI engine</h2>
@@ -96,7 +172,10 @@
           <h2>Local data</h2>
           <p>Everything lives in one SQLite file on this machine.</p>
         </div>
-        <a class="btn btn--small settings-section__action" href="{{ url_for('settings.export_data') }}">{{ icon('download', 14) }} Export JSON</a>
+        <div class="settings-section__actions" style="display:flex;gap:8px;align-items:center;">
+          <a class="btn btn--small" href="{{ url_for('settings.export_data') }}">{{ icon('download', 14) }} Export JSON</a>
+          <button class="btn btn--small" type="button" id="restore-trigger-btn">{{ icon('upload', 14) }} Restore JSON</button>
+        </div>
       </div>
       <div class="data-grid">
         <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.documents) }}</span><span class="data-stat__label">DOCUMENTS</span></div>
@@ -119,6 +198,11 @@
     <button class="btn btn--primary" type="submit" id="settings-submit">Save settings</button>
   </div>
 </form>
+
+<form id="restore-form" method="post" action="{{ url_for('settings.restore') }}" enctype="multipart/form-data" style="display:none;">
+  <input type="file" id="restore-file-input" name="backup_file" accept=".json">
+</form>
+
 {% endblock %}
 
 {% block scripts %}

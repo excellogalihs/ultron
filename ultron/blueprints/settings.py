@@ -177,3 +177,57 @@ def export_data():
     response = Response(body, mimetype="application/json")
     response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+@bp.post("/settings/restore")
+def restore():
+    uploaded = request.files.get("backup_file")
+    if not uploaded or not uploaded.filename:
+        flash("Please select a JSON backup file to restore.", "error")
+        return redirect(url_for("settings.index"))
+
+    try:
+        payload = json.loads(uploaded.read().decode("utf-8", "replace"))
+    except Exception as error:
+        flash(f"Invalid backup file format: {error}", "error")
+        return redirect(url_for("settings.index"))
+
+    if payload.get("application") != "ultron" or not isinstance(payload.get("data"), dict):
+        flash("File is not a valid Ultron workspace backup archive.", "error")
+        return redirect(url_for("settings.index"))
+
+    db = get_db()
+    data = payload.get("data", {})
+    try:
+        # Atomic restore inside a transaction
+        # Clear tables in reverse dependency order
+        for table in reversed(TABLES):
+            db.execute(f"DELETE FROM {table}")
+
+        # Insert records for each table
+        for table in TABLES:
+            records = data.get(table, [])
+            if not records:
+                continue
+            cols = list(records[0].keys())
+            placeholders = ", ".join("?" for _ in cols)
+            col_names = ", ".join(f'"{c}"' for c in cols)
+            for rec in records:
+                db.execute(
+                    f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})",
+                    [rec.get(c) for c in cols],
+                )
+
+        # Restore settings
+        backup_settings = payload.get("settings", {})
+        for k, v in backup_settings.items():
+            _upsert(db, k, v)
+
+        db.commit()
+        clear_settings_cache()
+        flash("Workspace data and settings restored successfully from backup.", "success")
+    except Exception as error:
+        db.rollback()
+        flash(f"Restore failed: {error}", "error")
+
+    return redirect(url_for("settings.index"))

@@ -40,10 +40,14 @@ def parse_datetime(value):
 
 
 def get_settings():
-    """Request-scoped settings dictionary."""
+    """Request-scoped settings dictionary with fallbacks."""
     if "settings" not in g:
+        from .constants import DEFAULT_SETTINGS
+        data = dict(DEFAULT_SETTINGS)
         rows = get_db().execute("SELECT key, value FROM settings").fetchall()
-        g.settings = {row["key"]: row["value"] for row in rows}
+        for row in rows:
+            data[row["key"]] = row["value"]
+        g.settings = data
     return g.settings
 
 

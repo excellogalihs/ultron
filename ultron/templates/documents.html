@@ -30,7 +30,11 @@
         <option value="{{ folder.id }}"{% if selected_folder == folder.id %} selected{% endif %}>{{ folder.name }}</option>
         {% endfor %}
       </select>
-      <button class="btn btn--small" type="button" id="new-folder-btn">{{ icon('plus', 13) }} New folder</button>
+      <div style="display:flex;gap:6px;width:100%;">
+        <button class="btn btn--small" type="button" id="new-folder-btn" style="flex:1;">{{ icon('plus', 13) }} Folder</button>
+        <button class="btn btn--small" type="button" id="doc-import-btn" style="flex:1;" title="Import text or Markdown file">{{ icon('upload', 13) }} Import</button>
+      </div>
+      <input type="file" id="doc-import-file" accept=".txt,.md,.markdown,.json,.csv,.py,.sql,.html,.css,.js" style="display:none" aria-label="Upload document">
       <button class="btn btn--primary btn--block" type="button" id="new-document-btn-rail">{{ icon('plus', 14) }} New</button>
     </div>
     <div class="doc-list" id="doc-list" role="list">
@@ -67,6 +71,7 @@
             <option value="">Unfiled</option>
             {% for folder in folders %}<option value="{{ folder.id }}">{{ folder.name }}</option>{% endfor %}
           </select>
+          <a class="icon-btn" id="doc-export-btn" title="Export document (.md / .txt)" aria-label="Export document" download style="display:none;">{{ icon('download', 16) }}</a>
           <button class="icon-btn icon-btn--danger" type="button" id="doc-delete" title="Delete document" aria-label="Delete document">{{ icon('trash', 16) }}</button>
           <button class="btn btn--primary" type="submit" id="doc-save">Save</button>
         </div>

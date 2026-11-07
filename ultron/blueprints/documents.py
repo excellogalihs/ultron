@@ -1,3 +1,4 @@
+from pathlib import Path
 """Documents: local notes with a lightweight editor."""
 
 import json
@@ -340,3 +341,83 @@ def api_assist_document(document_id):
     response.headers["Cache-Control"] = "no-cache"
     response.headers["X-Accel-Buffering"] = "no"
     return response
+
+
+@bp.get("/api/documents/<int:document_id>/export")
+def api_export(document_id):
+    row = get_db().execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    if row is None:
+        return jsonify(error="Document not found."), 404
+    fmt = request.args.get("format") or row["format"] or "markdown"
+    ext = "md" if fmt == "markdown" else "txt"
+    title = row["title"] or "untitled"
+    safe_title = "".join(c for c in title if c.isalnum() or c in " ._-").strip() or "document"
+    filename = f"{safe_title}.{ext}"
+    content = row["content"] or ""
+    response = Response(content, mimetype="text/markdown" if ext == "md" else "text/plain")
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@bp.get("/api/documents/export-all")
+def api_export_all():
+    docs = get_db().execute("SELECT * FROM documents ORDER BY id ASC").fetchall()
+    payload = {
+        "application": "ultron",
+        "exported_at": now_str(),
+        "count": len(docs),
+        "documents": [_serialize(d) for d in docs],
+    }
+    body = json.dumps(payload, indent=2, ensure_ascii=False)
+    response = Response(body, mimetype="application/json")
+    response.headers["Content-Disposition"] = 'attachment; filename="ultron-all-documents.json"'
+    return response
+
+
+@bp.post("/api/documents/import")
+def api_import():
+    db = get_db()
+    folder_id = None
+    if "file" in request.files:
+        uploaded = request.files["file"]
+        filename = uploaded.filename or "imported_document.txt"
+        title = Path(filename).stem or "Imported Document"
+        try:
+            content = uploaded.read().decode("utf-8", "replace")
+        except Exception as error:
+            return jsonify(error=f"Could not read uploaded file: {error}"), 400
+        fmt = "markdown" if filename.lower().endswith((".md", ".markdown")) else "text"
+        folder_raw = request.form.get("folder_id")
+        if folder_raw:
+            try:
+                folder_id = _folder_value(folder_raw, db)
+            except ValueError:
+                folder_id = None
+    else:
+        data = request.get_json(silent=True) or {}
+        title = (data.get("title") or "Imported Document").strip()
+        content = data.get("content") or ""
+        fmt = data.get("format") or "markdown"
+        try:
+            folder_id = _folder_value(data.get("folder_id"), db)
+        except ValueError:
+            folder_id = None
+
+    if not title:
+        title = "Imported Document"
+    if len(title) > MAX_TITLE_LENGTH:
+        title = title[:MAX_TITLE_LENGTH]
+    if len(content) > MAX_CONTENT_LENGTH:
+        return jsonify(error="Imported content exceeds maximum allowed size."), 400
+
+    timestamp = now_str()
+    cursor = db.execute(
+        """
+        INSERT INTO documents (title, content, folder_id, format, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (title, content, folder_id, fmt, timestamp, timestamp),
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM documents WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    return jsonify(document=_serialize(row)), 201
