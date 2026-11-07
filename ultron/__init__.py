@@ -37,11 +37,13 @@ def create_app(test_config=None):
     from .blueprints.documents import bp as documents_bp
     from .blueprints.home import bp as home_bp
     from .blueprints.memory import bp as memory_bp
+    from .blueprints.marketing import bp as marketing_bp
     from .blueprints.settings import bp as settings_bp
     from .blueprints.tasks import bp as tasks_bp
 
     for blueprint in (
         home_bp,
+        marketing_bp,
         chat_bp,
         documents_bp,
         calendar_bp,

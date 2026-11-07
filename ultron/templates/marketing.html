@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f0eee8">
+  <meta name="description" content="ultron is your local-first AI workspace. Chat, write, plan, and keep your data on your own machine.">
+  <title>ultron — your own kind of intelligence</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/marketing.css') }}">
+</head>
+<body>
+  <header class="top" id="top">
+    <a class="wordmark" href="#top" aria-label="ultron home"><span class="wordmark__icon">u</span> ultron<span class="wordmark__period">.</span></a>
+    <nav class="top__nav" aria-label="Main navigation">
+      <a href="#features">Features</a><a href="#local">Why local?</a>
+    </nav>
+    <a class="top__launch" href="{{ url_for('home.index') }}">Open workspace <span>↗</span></a>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero__copy">
+        <div class="eyebrow"><span class="live-dot"></span> YOUR SPACE. YOUR RULES.</div>
+        <h1>A little more<br>you. A little less<br><span>cloud.</span></h1>
+        <p class="hero__lead">Meet ultron. A personal AI workspace that lives on your machine, works with your ideas, and keeps your data where it belongs.</p>
+        <div class="hero__actions">
+          <a class="button button--dark" href="{{ url_for('home.index') }}">Step inside <span>↗</span></a>
+          <a class="button button--line" href="https://github.com/excellogalihs/ultron" target="_blank" rel="noopener noreferrer">View on GitHub <span>↗</span></a>
+        </div>
+        <div class="hero__note"><span>✳</span> Runs locally with Ollama <i>·</i> Lightweight by design</div>
+      </div>
+
+      <div class="hero-art" aria-label="Illustration of the ultron workspace">
+        <div class="orbit orbit--one"></div><div class="orbit orbit--two"></div>
+        <div class="sun"></div>
+        <div class="sticker sticker--top">BUILT FOR<br>YOUR FLOW <span>↘</span></div>
+        <div class="sticker sticker--side">NO CLOUD<br>NEEDED</div>
+        <div class="app-window">
+          <div class="app-window__bar"><span class="window-dots"><i></i><i></i><i></i></span><span>ULTRON / HOME</span><span class="window-status"><b></b> LOCAL NODE</span></div>
+          <div class="app-window__body">
+            <div class="mini-sidebar"><div class="mini-mark">u</div><span class="mini-active">⌂</span><span>◉</span><span>▤</span><span>▦</span><span>☷</span></div>
+            <div class="mini-content">
+              <div class="mini-kicker">MONDAY / 09:41</div>
+              <div class="mini-title">Good morning,<br><strong>operator.</strong></div>
+              <div class="mini-sub">Your workspace is ready when you are.</div>
+              <div class="mini-prompt"><span>Ask ultron anything…</span><b>↑</b></div>
+              <div class="mini-cards"><div><small>RECENT NOTE</small><b>Ideas for later</b><span>Edited just now</span></div><div><small>UP NEXT</small><b>Keep the day open</b><span>Nothing scheduled</span></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="art-caption"><span>01 —</span> A calmer place to think</div>
+      </div>
+      <div class="hero__index">PERSONAL INTELLIGENCE <span>№ 001</span></div>
+    </section>
+
+    <section class="manifesto" id="local">
+      <div class="manifesto__label">A TOOL THAT FEELS LIKE YOURS <span>✳</span></div>
+      <div class="manifesto__body"><h2>Think bigger.<br><em>Keep it yours.</em></h2><p>ultron brings your conversations, notes, plans, and little details into one focused workspace. It runs on your computer, so your day stays yours too.</p></div>
+      <div class="manifesto__footer"><span>LOCAL BY DEFAULT</span><span>MADE TO BE USEFUL</span><span>OPEN SOURCE <b>↗</b></span></div>
+    </section>
+
+    <section class="features" id="features">
+      <div class="section-head"><div class="eyebrow">A TOOLBOX FOR THE EVERYDAY</div><h2>Less juggling.<br><span>More getting there.</span></h2><p>All the useful bits, together in one lightweight place.</p></div>
+      <div class="feature-grid">
+        <article class="feature feature--chat"><div class="feature__art chat-art"><span class="chat-bubble">Can you help me untangle this idea?</span><span class="chat-reply">Absolutely. Let’s start with the part that matters most.</span><i>✳</i></div><div class="feature__text"><span>01 / THINK OUT LOUD</span><h3>A chat that knows your context.</h3><p>Talk through a question, search the web, or ask ultron to help with a task in your workspace.</p></div></article>
+        <article class="feature feature--notes"><div class="feature__art notes-art"><div class="paper"><small>FIELD NOTES / 04</small><strong>Make room<br>for the good<br>ideas.</strong><span>Saved locally · just now</span></div><span class="scribble">✳</span></div><div class="feature__text"><span>02 / MAKE SOMETHING</span><h3>Notes with a little momentum.</h3><p>Write and organize documents, bring in files, and get AI suggestions while you edit.</p></div></article>
+        <article class="feature feature--plan"><div class="feature__art plan-art"><div class="plan-card"><small>TODAY, AT YOUR PACE</small><div><b>09:30</b><span>Think it through</span><i>●</i></div><div><b>11:00</b><span>Make a little progress</span><i>●</i></div><div><b>14:15</b><span>Take a breather</span><i>○</i></div></div><span class="plan-spark">↗</span></div><div class="feature__text"><span>03 / FIND YOUR FLOW</span><h3>Plans that stay in view.</h3><p>Keep a handle on tasks, calendar events, and the things you want ultron to remember.</p></div></article>
+      </div>
+    </section>
+
+    <section class="local-band"><div class="local-band__glyph">u<span>.</span></div><div><div class="eyebrow">YOUR MACHINE, YOUR CALL</div><h2>Private by nature.<br><em>Light on its feet.</em></h2></div><div class="local-band__copy"><p>Built with Flask, SQLite, and Ollama. No heavyweight desktop stack and no cloud account to set up. Your workspace data stays on your machine.</p><a href="https://github.com/excellogalihs/ultron" target="_blank" rel="noopener noreferrer">See how it works <span>↗</span></a></div></section>
+
+    <section class="closing"><div class="eyebrow">READY WHEN YOU ARE</div><h2>Your next good idea<br>could start <em>right here.</em></h2><a class="button button--dark" href="{{ url_for('home.index') }}">Open ultron <span>↗</span></a><div class="closing-orbit"></div></section>
+  </main>
+  <footer><a class="wordmark" href="#top"><span class="wordmark__icon">u</span> ultron<span class="wordmark__period">.</span></a><span>YOUR SPACE. YOUR RULES.</span><a href="https://github.com/excellogalihs/ultron" target="_blank" rel="noopener noreferrer">VIEW ON GITHUB ↗</a><span>© ULTRON</span></footer>
+</body>
+</html>
