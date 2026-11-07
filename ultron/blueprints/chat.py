@@ -145,9 +145,6 @@ def _render_page(conversation_id=None):
         conversations=conversations,
         conversation=conversation,
         messages=messages,
-        supported_models=ollama.model_options(
-            settings.get("ollama_url"), current_model=current_model
-        ),
         default_model=DEFAULT_MODEL,
     )
 

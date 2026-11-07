@@ -6,8 +6,7 @@
 {% set current_model = conversation.model if conversation else settings.default_model %}
 <div class="chat-shell" id="chat-app" data-send-key="{{ settings.chat_send_key or 'enter' }}" data-web-search="{{ settings.web_search_enabled or '1' }}"
      data-conversation-id="{{ conversation.id if conversation else '' }}"
-     data-conversation-title="{{ conversation.title if conversation else '' }}"
-     data-default-model="{{ current_model }}">
+     data-conversation-title="{{ conversation.title if conversation else '' }}">
   <aside class="chat-rail" id="chat-rail" aria-label="Conversations">
     <div class="chat-rail__head">
       <span class="label">THREADS</span>
@@ -37,12 +36,6 @@
         <span class="chat-head__sub" id="chat-subtitle">{{ current_model }} · local inference</span>
       </div>
       <div class="chat-head__actions">
-        <label class="sr-only" for="chat-model">Conversation model</label>
-        <select class="select select--compact" id="chat-model">
-          {% for model in supported_models %}
-          <option value="{{ model.id }}"{% if current_model == model.id %} selected{% endif %}>{{ model.label }}{% if not model.installed %} · unavailable{% endif %}</option>
-          {% endfor %}
-        </select>
         <span class="chat-engine-status is-checking" id="chat-connection-state" role="status">Checking engine</span>
         <button class="icon-btn" type="button" id="rename-conversation" title="Rename conversation" aria-label="Rename conversation"{% if not conversation %} hidden{% endif %}>{{ icon('edit', 15) }}</button>
         <button class="icon-btn icon-btn--danger" type="button" id="delete-conversation" title="Delete conversation" aria-label="Delete conversation"{% if not conversation %} hidden{% endif %}>{{ icon('trash', 16) }}</button>

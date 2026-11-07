@@ -16,10 +16,7 @@
   const attachmentRemove = document.getElementById("chat-attachment-remove");
   const sendBtn = document.getElementById("chat-send");
   const stopBtn = document.getElementById("chat-stop");
-  const modelSelect = document.getElementById("chat-model");
   const titleEl = document.getElementById("chat-title");
-  const subtitleEl = document.getElementById("chat-subtitle");
-  const composerModel = document.getElementById("composer-model");
   const deleteBtn = document.getElementById("delete-conversation");
   const renameBtn = document.getElementById("rename-conversation");
   const renameDialog = document.getElementById("rename-dialog");
@@ -38,19 +35,8 @@
 
   let streaming = false;
   let activeController = null;
-  let previousModel = modelSelect.value;
   let pendingAttachment = null;
   let uploadingAttachment = false;
-
-  const modelLabel = () => {
-    const option = modelSelect.options[modelSelect.selectedIndex];
-    return option ? option.textContent.trim() : modelSelect.value;
-  };
-
-  const updateModelDisplay = () => {
-    subtitleEl.textContent = `${modelLabel()} · local inference`;
-    composerModel.textContent = modelSelect.value;
-  };
 
   const autoResize = () => {
     input.style.height = "auto";
@@ -404,7 +390,7 @@
       try {
         const created = await Ultron.api("/api/conversations", {
           method: "POST",
-          body: { first_message: content, model: modelSelect.value, document_id: pendingAttachment?.id || null },
+          body: { first_message: content, document_id: pendingAttachment?.id || null },
         });
         window.location.href = `/chat/${created.id}?autosend=1`;
       } catch (error) {
@@ -479,31 +465,6 @@
     });
   });
 
-  modelSelect.addEventListener("change", async () => {
-    const nextModel = modelSelect.value;
-    updateModelDisplay();
-
-    if (!conversationId) {
-      previousModel = nextModel;
-      return;
-    }
-
-    modelSelect.disabled = true;
-    try {
-      await Ultron.api(`/api/conversations/${conversationId}`, {
-        method: "PATCH",
-        body: { model: nextModel },
-      });
-      previousModel = nextModel;
-    } catch (error) {
-      modelSelect.value = previousModel;
-      updateModelDisplay();
-      Ultron.toast(error.message, "error");
-    } finally {
-      modelSelect.disabled = false;
-    }
-  });
-
   newBtn.addEventListener("click", async () => {
     if (streaming) return;
 
@@ -517,7 +478,7 @@
     try {
       const created = await Ultron.api("/api/conversations", {
         method: "POST",
-        body: { model: modelSelect.value },
+        body: {},
       });
       window.location.href = `/chat/${created.id}`;
     } catch (error) {
@@ -594,7 +555,6 @@
     if (window.innerWidth > 1024) setRail(false);
   });
 
-  updateModelDisplay();
   messagesEl.querySelectorAll(".msg--user[data-document-title]").forEach((message) => {
     const meta = message.querySelector(".msg__meta");
     if (!meta || meta.querySelector(".msg__attachment")) return;
