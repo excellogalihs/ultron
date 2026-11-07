@@ -23,6 +23,16 @@ def _due_date(value):
         raise ValueError("Due date must use YYYY-MM-DD.") from error
 
 
+def _due_time(value):
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%H:%M").strftime("%H:%M")
+    except ValueError as error:
+        raise ValueError("Due time must use HH:MM.") from error
+
+
 def _serialize(row):
     return dict(row) if row is not None else None
 
@@ -111,8 +121,11 @@ def api_create():
         return jsonify(error="Invalid task category."), 400
     try:
         due_date = _due_date(data.get("due_date"))
+        due_time = _due_time(data.get("due_time"))
     except ValueError as error:
         return jsonify(error=str(error)), 400
+    if due_time and not due_date:
+        return jsonify(error="A due date is required when setting a reminder time."), 400
 
     db = get_db()
     project_id = data.get("project_id")
@@ -122,10 +135,10 @@ def api_create():
         return jsonify(error="Choose a valid project."), 400
     cursor = db.execute(
         """
-        INSERT INTO tasks (title, notes, status, priority, category, due_date, project_id, created_at)
-        VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)
+        INSERT INTO tasks (title, notes, status, priority, category, due_date, due_time, project_id, created_at)
+        VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)
         """,
-        (title, notes, priority, category, due_date, project_id, now_str()),
+        (title, notes, priority, category, due_date, due_time, project_id, now_str()),
     )
     db.commit()
     row = db.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone()
@@ -180,6 +193,17 @@ def api_update(task_id):
             return jsonify(error=str(error)), 400
         fields.append("due_date = ?")
         params.append(due_date)
+        if due_date is None and "due_time" not in data:
+            fields.append("due_time = ?")
+            params.append(None)
+
+    if "due_time" in data:
+        try:
+            due_time = _due_time(data.get("due_time"))
+        except ValueError as error:
+            return jsonify(error=str(error)), 400
+        fields.append("due_time = ?")
+        params.append(due_time)
 
     if "project_id" in data:
         project_id = data.get("project_id") or None

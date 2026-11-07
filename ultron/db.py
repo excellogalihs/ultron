@@ -43,6 +43,7 @@ def init_db():
         "events": {"category": "TEXT NOT NULL DEFAULT 'general'"},
         "tasks": {
             "category": "TEXT NOT NULL DEFAULT 'general'",
+            "due_time": "TEXT",
             "project_id": "INTEGER REFERENCES projects(id) ON DELETE SET NULL",
         },
     }

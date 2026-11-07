@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high')),
     category TEXT NOT NULL DEFAULT 'general',
     due_date TEXT,
+    due_time TEXT,
     project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
     completed_at TEXT

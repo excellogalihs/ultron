@@ -29,18 +29,19 @@ def _schedule_due_reminders(db, now):
     new_ids = []
 
     due_tasks = db.execute(
-        "SELECT id, title, due_date FROM tasks WHERE status = 'pending' AND due_date = ?",
+        "SELECT id, title, due_date, due_time FROM tasks WHERE status = 'pending' AND due_date = ?",
         (now.date().isoformat(),),
     ).fetchall()
     for task in due_tasks:
-        due_at = f"{task['due_date']} {task_time}:00"
+        reminder_time = task["due_time"] or task_time
+        due_at = f"{task['due_date']} {reminder_time}:00"
         if due_at > current:
             continue
         cursor = db.execute(
             """INSERT OR IGNORE INTO notifications
                (source_type, source_id, schedule_key, title, message, due_at, created_at)
                VALUES ('task', ?, ?, ?, ?, ?, ?)""",
-            (task["id"], task["due_date"], "Task due today", task["title"], due_at, current),
+            (task["id"], f"{task['due_date']} {reminder_time}", "Task due today", task["title"], due_at, current),
         )
         if cursor.rowcount:
             new_ids.append(cursor.lastrowid)

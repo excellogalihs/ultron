@@ -3,6 +3,7 @@
 import json
 import re
 import sqlite3
+from datetime import date, datetime, timedelta
 from urllib.parse import quote_plus
 
 from flask import (
@@ -61,6 +62,113 @@ def _explicit_web_search_query(text):
         return None
     query = re.sub(r"^(?:please\s+)?(?:for\s+)?", "", match.group(1).strip(), flags=re.IGNORECASE)
     return query or None
+
+
+def _requests_productivity_mutation(text):
+    """Identify direct task/calendar changes that must be confirmed by a successful tool call."""
+    normalized = (text or "").strip().casefold()
+    if re.match(r"^(how|what|why|when|where)\b", normalized):
+        return False
+    target = re.search(r"\b(tasks?|calendar|events?|reminders?)\b|\bremind me to\b", normalized)
+    action = re.search(
+        r"\b(add|create|make|put|schedule|set up|remove|delete|complete|finish|mark|update|edit|change|move|reschedule|remind)\b",
+        normalized,
+    )
+    return bool(target and action)
+
+
+def _simple_task_request(text):
+    """Turn a clear, single-task request into tool arguments without depending on model JSON."""
+    request_text = (text or "").strip()
+    create_match = re.match(
+        r"^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?"
+        r"(?:(?:i\s+(?:want|need)\s+to)\s+)?"
+        r"(?:add|create|make)\s+(?:me\s+)?(?:a\s+)?(?:new\s+)?task\b"
+        r"(?:\s*[:,-]\s*|\s+(?:called|named|titled|to|for|about)\s+|\s+)?(?P<details>.*?)\s*[.!?]*$",
+        request_text,
+        flags=re.IGNORECASE,
+    )
+    task_list_match = re.match(
+        r"^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?"
+        r"(?:add|put|save)\s+(?P<details>.+?)\s+(?:to|in|on)\s+"
+        r"(?:my\s+)?(?:task\s+list|to-do\s+list|tasks?)\b(?P<tail>.*?)\s*[.!?]*$",
+        request_text,
+        flags=re.IGNORECASE,
+    )
+    reminder_match = re.match(r"^(?:please\s+)?remind\s+me\s+to\s+(?P<details>.*?)\s*[.!?]*$", request_text, re.IGNORECASE)
+    match = task_list_match or create_match or reminder_match
+    if not match:
+        return None
+
+    details = match.group("details").strip()
+    if task_list_match is match:
+        details += " " + (match.group("tail") or "")
+    details = re.sub(r"\s+(?:to|in|on)\s+(?:my\s+)?(?:task\s+list|to-do\s+list|tasks?)\s*$", "", details, flags=re.IGNORECASE)
+    details = re.sub(r"^(?:to|do|that\s+i)\s+", "", details, flags=re.IGNORECASE)
+    details = re.sub(r"^(?:me\s+)?to\s+", "", details, flags=re.IGNORECASE)
+    if not details:
+        return None
+
+    today = date.today()
+    due_date = None
+    date_patterns = (
+        (r"\bday after tomorrow\b", lambda m: today + timedelta(days=2)),
+        (r"\btomorrow\b", lambda m: today + timedelta(days=1)),
+        (r"\btoday\b", lambda m: today),
+        (r"\b(?:in|after)\s+(\d+)\s+days?\b", lambda m: today + timedelta(days=int(m.group(1)))),
+        (r"\b(?:in|after)\s+(?:a|one)\s+weeks?\b", lambda m: today + timedelta(days=7)),
+        (r"\b(?:in|after)\s+(\d+)\s+weeks?\b", lambda m: today + timedelta(days=int(m.group(1)) * 7)),
+        (r"\b(?:by\s+)?(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+         lambda m: today + timedelta(days=((
+             ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday").index(m.group(1).casefold())
+             - today.weekday()
+         ) % 7 or (7 if m.group(0).casefold().startswith("next") else 0)))),
+        (r"\b(?:by\s+|on\s+|due\s+(?:on\s+)?)?(\d{4}-\d{2}-\d{2})\b",
+         lambda m: date.fromisoformat(m.group(1))),
+        (r"\b(?:on\s+|by\s+|due\s+(?:on\s+)?)?((?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,?\s+\d{4})?)\b",
+         lambda m: _parse_month_day(m.group(1), today)),
+    )
+    for pattern, resolve in date_patterns:
+        found = re.search(pattern, details, re.IGNORECASE)
+        if not found:
+            continue
+        try:
+            due_date = resolve(found).isoformat()
+        except ValueError:
+            return None
+        details = (details[:found.start()] + " " + details[found.end():]).strip()
+        break
+
+    due_time = None
+    time_match = re.search(r"\b(?:at\s+)?([01]?\d|2[0-3]):([0-5]\d)\b", details, re.IGNORECASE)
+    if time_match:
+        due_time = f"{int(time_match.group(1)):02d}:{time_match.group(2)}"
+        due_date = due_date or today.isoformat()
+        details = (details[:time_match.start()] + " " + details[time_match.end():]).strip()
+    details = re.sub(r"^(?:as\s+a\s+)?reminder(?:\s+that)?\s+", "", details, flags=re.IGNORECASE)
+    details = re.sub(r"^(?:i\s+)?(?:have|need|must|should)\s+to\s+", "", details, flags=re.IGNORECASE)
+    details = re.sub(r"\b(?:due|on|by|for|tomorrow|today)\s*$", "", details, flags=re.IGNORECASE).strip(" ,:;.-")
+    details = re.sub(r"\s+", " ", details).strip(" '\"“”")
+    details = re.sub(r"^(?:called|named|titled)\s+", "", details, flags=re.IGNORECASE)
+    if not details:
+        return None
+    details = details[0].upper() + details[1:]
+    return {"title": details, "due_date": due_date, "due_time": due_time}
+
+
+def _parse_month_day(value, today):
+    for format_string in ("%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y"):
+        try:
+            return datetime.strptime(value, format_string).date()
+        except ValueError:
+            continue
+    for format_string in ("%B %d", "%b %d"):
+        try:
+            parsed = datetime.strptime(value, format_string).date().replace(year=today.year)
+            return parsed if parsed >= today else parsed.replace(year=today.year + 1)
+        except ValueError:
+            continue
+    raise ValueError("Date could not be interpreted")
 
 
 def _format_web_search_result(query, result):
@@ -306,14 +414,15 @@ def _system_prompt(query):
         "Understand task requests written in ordinary language, including casual phrasing and relative dates such as "
         "'tomorrow', 'next Friday', or 'by the end of the week'. Infer the task title and due date from the request; "
         "do not ask the user to follow a template or provide JSON, field names, or a particular date format. "
-        "Convert dates to YYYY-MM-DD and times to 24-hour HH:MM internally, using the user's local time. "
-        "Ask a brief follow-up only when the task itself or an important date is genuinely unclear."
+        "Resolve any date wording the user gives into an internal date value using the user's local clock. "
+        "The date syntax in tool examples is only for internal calls: never show it to the user or ask them to repeat a date that way. "
+        "If no due date was requested, leave it unset. If a requested date is genuinely unclear, ask what day they mean in plain language."
         "\nCall one tool at a time using exactly this JSON format: "
         '{"ultron_tool":"tool_name","arguments":{...}}. After the result, give a concise confirmation or answer.'
         "\nCalendar tools: read_calendar_events(date_from?, date_to?), create_calendar_event(title, date, start_time, end_time?, description?, category?), "
         "update_calendar_event(id, title?, date?, start_time?, end_time?, description?, category?), delete_calendar_event(id)."
-        "\nTask tools: read_tasks(status? pending|completed|all, category?, project_id?), create_task(title, notes?, priority?, category?, due_date?, project_id?), "
-        "update_task(id, title?, notes?, priority?, category?, due_date?, status? pending|completed, project_id?), delete_task(id). "
+        "\nTask tools: read_tasks(status? pending|completed|all, category?, project_id?), create_task(title, notes?, priority?, category?, due_date?, due_time?, project_id?), "
+        "update_task(id, title?, notes?, priority?, category?, due_date?, due_time?, status? pending|completed, project_id?), delete_task(id). "
         "To mark a task complete or reopen it, use update_task with status. Use null to clear a task due date or event end time. "
         "These tool instructions are internal; never ask the user to write a tool call or use this syntax."
         " Return valid JSON with double quotes, no Markdown fences or commentary, and include every required argument."
@@ -500,6 +609,40 @@ def api_stream_reply(conversation_id):
 
     def generate():
         yield _sse("meta", {"conversation_id": conversation_id, "model": model, "title": title})
+        direct_task = (
+            None
+            if active_document_id or re.search(
+                r"\b(?:in|under|for)\s+(?:my\s+|the\s+)?project\b|"
+                r"\b(?:assign|attach|associate)\b.*\bproject\b|"
+                r"\b(?:based on|from (?:the\s+)?(?:attached|meeting|document|notes|file))\b",
+                latest_user_message,
+                re.IGNORECASE,
+            )
+            else _simple_task_request(latest_user_message)
+        )
+        if direct_task:
+            yield _sse("status", {"message": _tool_status("create_task")})
+            try:
+                result = workspace_tools.execute_tool(
+                    database_path,
+                    "create_task",
+                    direct_task,
+                    current_app.config.get("ULTRON_WORKSPACE_ROOT"),
+                )
+                task = result["task"]
+                reply = f"Added “{task['title']}” to your tasks."
+            except workspace_tools.ToolError as error:
+                reply = f"I couldn't add that task: {error}"
+            yield _sse("token", {"token": reply})
+            finished_at = now_str()
+            message_id = _persist_reply(database_path, conversation_id, reply, finished_at, requested_document_id)
+            yield _sse(
+                "done",
+                {"id": message_id, "content": reply, "created_at": finished_at, "title": title,
+                 "document_id": requested_document_id, "file_type": attachment_meta["file_type"] if attachment_meta else ""},
+            )
+            return
+
         direct_query = _explicit_web_search_query(latest_user_message)
         if direct_query:
             if settings.get("web_search_enabled", "1") == "1":
@@ -525,6 +668,9 @@ def api_stream_reply(conversation_id):
             model_messages = list(chat_messages)
             tool_calls = 0
             malformed_tool_retries = 0
+            action_retries = 0
+            requires_productivity_mutation = _requests_productivity_mutation(latest_user_message)
+            productivity_mutation_succeeded = False
             while True:
                 round_chunks = []
                 decided = False
@@ -542,13 +688,20 @@ def api_stream_reply(conversation_id):
                             continue
                         decided = True
                         structured_candidate = candidate.startswith(("{", "```"))
-                        if not structured_candidate:
+                        if not structured_candidate and (
+                            not requires_productivity_mutation or productivity_mutation_succeeded
+                        ):
                             yield _sse("token", {"token": "".join(round_chunks)})
-                    elif not structured_candidate:
+                    elif not structured_candidate and (
+                        not requires_productivity_mutation or productivity_mutation_succeeded
+                    ):
                         yield _sse("token", {"token": token})
 
                 round_text = "".join(round_chunks).strip()
-                tool_call = workspace_tools.parse_tool_call(round_text) if structured_candidate else None
+                # Parse the complete response even when the model starts with prose.
+                # Small local models often preface their JSON tool call despite the
+                # instruction to return JSON only.
+                tool_call = workspace_tools.parse_tool_call(round_text)
                 if tool_call and tool_call[0] in AUTOMATIC_CALENDAR_TASK_TOOLS:
                     if tool_calls >= workspace_tools.MAX_TOOL_CALLS:
                         reply = "I reached the action limit for this request. Ask me to continue."
@@ -562,7 +715,19 @@ def api_stream_reply(conversation_id):
                             current_app.config.get("ULTRON_WORKSPACE_ROOT"),
                         )
                     except workspace_tools.ToolError as error:
-                        result = {"error": str(error)}
+                        result = {
+                            "error": str(error),
+                            "instruction": (
+                                "Correct this internally using the user's original natural-language request and local date context. "
+                                "Never ask the user for a date format. If the date was not specified, omit the optional date; "
+                                "if it is genuinely unclear, ask what day they mean in plain language."
+                            ),
+                        }
+                    if (
+                        tool_name in {"create_task", "update_task", "delete_task", "create_calendar_event", "update_calendar_event", "delete_calendar_event"}
+                        and "error" not in result
+                    ):
+                        productivity_mutation_succeeded = True
                     model_messages.extend([
                         {"role": "assistant", "content": round_text},
                         {"role": "user", "content": (
@@ -589,7 +754,21 @@ def api_stream_reply(conversation_id):
                     reply = "I couldn't complete that calendar or task action. Please restate what you want me to do."
                     yield _sse("token", {"token": reply})
                 else:
-                    reply = round_text
+                    if requires_productivity_mutation and not productivity_mutation_succeeded:
+                        if action_retries == 0:
+                            model_messages.extend([
+                                {"role": "assistant", "content": round_text},
+                                {"role": "user", "content": (
+                                    "The user directly requested a calendar or task change. Your reply alone does not make or save the change. "
+                                    "Call the appropriate calendar/task tool now using the original request. Do not claim success unless the tool succeeds."
+                                )},
+                            ])
+                            action_retries += 1
+                            continue
+                        reply = "I couldn't verify that change was saved, so I haven't marked it as done. Please try again."
+                        yield _sse("token", {"token": reply})
+                    else:
+                        reply = round_text
                     if structured_candidate and reply:
                         yield _sse("token", {"token": reply})
                 break

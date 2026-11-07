@@ -67,11 +67,11 @@ def _date(value, label, optional=False):
     if optional and value in (None, ""):
         return None
     if not isinstance(value, str):
-        raise ToolError(f"{label} must use YYYY-MM-DD.")
+        raise ToolError(f"{label} could not be interpreted.")
     try:
         return datetime.strptime(value, "%Y-%m-%d").strftime("%Y-%m-%d")
     except ValueError as error:
-        raise ToolError(f"{label} must use YYYY-MM-DD.") from error
+        raise ToolError(f"{label} could not be interpreted.") from error
 
 
 def _time(value, label, fallback=None):
@@ -258,7 +258,7 @@ def _edit_document(db, arguments):
 def _create_task(db, arguments):
     args = _arguments(
         arguments,
-        {"title", "notes", "priority", "category", "due_date", "project_id"},
+        {"title", "notes", "priority", "category", "due_date", "due_time", "project_id"},
         {"title"},
     )
     title = _text(args["title"], "Task title", 300, required=True)
@@ -270,14 +270,17 @@ def _create_task(db, arguments):
     if category not in TASK_CATEGORIES:
         raise ToolError("Invalid task category.")
     due_date = _date(args.get("due_date"), "Due date", optional=True)
+    due_time = _time(args.get("due_time"), "Due time")
+    if due_time and not due_date:
+        raise ToolError("A due date is required when setting a reminder time.")
     project_id = args.get("project_id")
     if project_id is not None:
         if isinstance(project_id, bool) or not isinstance(project_id, int) or not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone():
             raise ToolError("Project id must identify an existing project.")
     cursor = db.execute(
-          """INSERT INTO tasks (title, notes, status, priority, category, due_date, project_id, created_at)
-              VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)""",
-          (title, notes, priority, category, due_date, project_id, now_str()),
+          """INSERT INTO tasks (title, notes, status, priority, category, due_date, due_time, project_id, created_at)
+              VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)""",
+          (title, notes, priority, category, due_date, due_time, project_id, now_str()),
     )
     return {"task": _row_dict(db.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone())}
 
@@ -306,7 +309,7 @@ def _read_tasks(db, arguments):
         params.append(project_id)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     rows = db.execute(
-        f"""SELECT id, title, notes, status, priority, category, due_date, project_id, created_at
+        f"""SELECT id, title, notes, status, priority, category, due_date, due_time, project_id, created_at
             FROM tasks {where}
             ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END,
                 CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
@@ -318,7 +321,7 @@ def _read_tasks(db, arguments):
 
 
 def _update_task(db, arguments):
-    allowed = {"id", "title", "notes", "priority", "category", "due_date", "status", "project_id"}
+    allowed = {"id", "title", "notes", "priority", "category", "due_date", "due_time", "status", "project_id"}
     args = _arguments(arguments, allowed, {"id"})
     task_id = args["id"]
     if isinstance(task_id, bool) or not isinstance(task_id, int):
@@ -344,8 +347,15 @@ def _update_task(db, arguments):
         fields.append("category = ?")
         values.append(args["category"])
     if "due_date" in args:
+        due_date = _date(args["due_date"], "Due date", optional=True)
         fields.append("due_date = ?")
-        values.append(_date(args["due_date"], "Due date", optional=True))
+        values.append(due_date)
+        if due_date is None and "due_time" not in args:
+            fields.append("due_time = ?")
+            values.append(None)
+    if "due_time" in args:
+        fields.append("due_time = ?")
+        values.append(_time(args["due_time"], "Due time"))
     if "project_id" in args:
         project_id = args["project_id"]
         if project_id is not None and (isinstance(project_id, bool) or not isinstance(project_id, int) or not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone()):

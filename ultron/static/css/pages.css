@@ -1500,6 +1500,11 @@ body[data-page="chat"] .main {
   color-scheme: dark;
 }
 
+.task-add__field input[type="time"] {
+  width: 112px;
+  color-scheme: dark;
+}
+
 .filter-tabs {
   display: flex;
   gap: 2px;
@@ -2216,7 +2221,8 @@ body[data-page="chat"] .main {
   }
 
   .task-add__field select,
-  .task-add__field input[type="date"] {
+  .task-add__field input[type="date"],
+  .task-add__field input[type="time"] {
     width: 100%;
   }
 

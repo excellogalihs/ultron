@@ -7,6 +7,7 @@
 
   const titleInput = document.getElementById("task-title");
   const dueInput = document.getElementById("task-due");
+  const dueTimeInput = document.getElementById("task-due-time");
   const priorityInput = document.getElementById("task-priority");
   const categoryInput = document.getElementById("task-category");
   const projectInput = document.getElementById("task-project");
@@ -18,6 +19,7 @@
   const editTitle = document.getElementById("edit-task-title");
   const editNotes = document.getElementById("edit-task-notes");
   const editDue = document.getElementById("edit-task-due");
+  const editDueTime = document.getElementById("edit-task-due-time");
   const editPriority = document.getElementById("edit-task-priority");
   const editCategory = document.getElementById("edit-task-category");
   const editProject = document.getElementById("edit-task-project");
@@ -31,6 +33,7 @@
       editTitle.value = task.title;
       editNotes.value = task.notes || "";
       editDue.value = task.due_date || "";
+      editDueTime.value = task.due_time || "";
       editPriority.value = task.priority;
       editCategory.value = task.category || "general";
       editProject.value = task.project_id || "";
@@ -59,6 +62,7 @@
         body: {
           title,
           due_date: dueInput.value,
+          due_time: dueTimeInput.value,
           priority: priorityInput.value,
           category: categoryInput.value,
           project_id: projectInput.value ? Number(projectInput.value) : null,
@@ -83,6 +87,7 @@
           title: editTitle.value.trim(),
           notes: editNotes.value,
           due_date: editDue.value,
+          due_time: editDueTime.value,
           priority: editPriority.value,
           category: editCategory.value,
           project_id: editProject.value ? Number(editProject.value) : null,

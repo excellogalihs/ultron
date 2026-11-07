@@ -24,6 +24,10 @@
     <input type="date" id="task-due">
   </div>
   <div class="task-add__field">
+    <label for="task-due-time">Time</label>
+    <input type="time" id="task-due-time">
+  </div>
+  <div class="task-add__field">
     <label for="task-priority">Priority</label>
     <select id="task-priority">
       <option value="normal">Normal</option>
@@ -74,7 +78,7 @@
             <span class="task-category">{{ task.category|capitalize }}</span>
             {% if task.project_name %}<a class="task-project-tag" href="{{ url_for('projects.index', project=task.project_id) }}">{{ task.project_name }}</a>{% endif %}
             {% if task.due_date %}
-            <span class="task-due{% if task.due_date < today_value %} is-overdue{% endif %}">{{ icon('clock', 12) }} {{ task.due_date|date }}{% if task.due_date == today_value %} · today{% endif %}</span>
+            <span class="task-due{% if task.due_date < today_value %} is-overdue{% endif %}">{{ icon('clock', 12) }} {{ task.due_date|date }}{% if task.due_date == today_value %} · today{% endif %}{% if task.due_time %} · {{ task.due_time }}{% endif %}</span>
             {% endif %}
           </span>
         </div>
@@ -102,7 +106,7 @@
             <span class="task-priority task-priority--{{ task.priority }}">{{ task.priority|upper }}</span>
             <span class="task-category">{{ task.category|capitalize }}</span>
             {% if task.project_name %}<a class="task-project-tag" href="{{ url_for('projects.index', project=task.project_id) }}">{{ task.project_name }}</a>{% endif %}
-            {% if task.due_date %}<span class="task-due">{{ icon('clock', 12) }} {{ task.due_date|date }}</span>{% endif %}
+            {% if task.due_date %}<span class="task-due">{{ icon('clock', 12) }} {{ task.due_date|date }}{% if task.due_time %} · {{ task.due_time }}{% endif %}</span>{% endif %}
           </span>
         </div>
         <button class="icon-btn task-row__edit" type="button" data-task-edit aria-label="Edit task">{{ icon('edit', 14) }}</button>
@@ -129,6 +133,7 @@
       <div class="field"><label for="edit-task-notes">Notes</label><textarea id="edit-task-notes" rows="3" maxlength="4000"></textarea></div>
       <div class="form-grid form-grid--three">
         <div class="field"><label for="edit-task-due">Due date</label><input id="edit-task-due" type="date"></div>
+        <div class="field"><label for="edit-task-due-time">Time</label><input id="edit-task-due-time" type="time"></div>
         <div class="field"><label for="edit-task-priority">Priority</label><select id="edit-task-priority">{% for priority in priorities %}<option value="{{ priority }}">{{ priority|capitalize }}</option>{% endfor %}</select></div>
         <div class="field"><label for="edit-task-category">Category</label><select id="edit-task-category">{% for category in categories %}<option value="{{ category }}">{{ category|capitalize }}</option>{% endfor %}</select></div>
       </div>

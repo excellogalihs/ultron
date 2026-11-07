@@ -4,7 +4,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -362,7 +362,7 @@ class LiveOllamaIntegrationTests(unittest.TestCase):
         conversation = client.post(
             "/api/conversations",
             json={
-                "first_message": "Create exactly one task titled Review 4B integration notes due 2026-12-12.",
+                "first_message": "I need this in my task list: review the 4B integration notes by December 12, 2026.",
                 "model": "gemma3:4b",
             },
         ).get_json()
@@ -370,9 +370,88 @@ class LiveOllamaIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         tasks = client.get("/api/tasks").get_json()["tasks"]
         self.assertEqual(len(tasks), 1, response.get_data(as_text=True))
-        self.assertEqual(tasks[0]["title"], "Review 4B integration notes")
+        self.assertIn("review", tasks[0]["title"].casefold())
+        self.assertIn("integration notes", tasks[0]["title"].casefold())
         self.assertEqual(tasks[0]["due_date"], "2026-12-12")
 class ChatBehaviorTests(unittest.TestCase):
+    def test_plain_language_task_request_is_saved_without_model_tool_json(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        app = create_app(
+            {"TESTING": True, "DATABASE": str(Path(temporary.name) / "direct-task.db")}
+        )
+        client = app.test_client()
+        conversation = client.post(
+            "/api/conversations",
+            json={"first_message": "Create a task as a reminder that at 20:00 I have to clean my room."},
+        ).get_json()
+
+        with patch.object(chat_blueprint.ollama, "stream_chat", side_effect=AssertionError("model should not be needed")):
+            response = client.post(
+                f"/api/conversations/{conversation['id']}/stream", json={}, buffered=True
+            )
+
+        body = response.get_data(as_text=True)
+        tasks = client.get("/api/tasks").get_json()["tasks"]
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0]["title"], "Clean my room")
+        self.assertEqual(tasks[0]["due_date"], date.today().isoformat())
+        self.assertEqual(tasks[0]["due_time"], "20:00")
+        self.assertIn("Added “Clean my room” to your tasks.", body)
+
+    def test_task_list_phrasing_and_month_dates_are_understood(self):
+        parsed = chat_blueprint._simple_task_request(
+            "Could you add 'Call Sam' to my task list on December 12, 2026?"
+        )
+        self.assertEqual(parsed, {"title": "Call Sam", "due_date": "2026-12-12", "due_time": None})
+        self.assertEqual(
+            chat_blueprint._simple_task_request("I need to create a task to review the plan tomorrow."),
+            {"title": "Review the plan", "due_date": (date.today() + timedelta(days=1)).isoformat(), "due_time": None},
+        )
+
+    def test_chat_wont_confirm_task_until_a_tool_saves_it(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        app = create_app(
+            {"TESTING": True, "DATABASE": str(Path(temporary.name) / "task-confirmation.db")}
+        )
+        client = app.test_client()
+        conversation = client.post(
+            "/api/conversations",
+            json={"first_message": "Can you put a reminder in my project tasks to review my notes tomorrow?"},
+        ).get_json()
+        calls = []
+
+        def fake_stream_chat(**kwargs):
+            calls.append(kwargs["messages"])
+            if len(calls) == 1:
+                yield "Okay, added that to your tasks."
+            elif len(calls) == 2:
+                yield "I'll save that now: " + json.dumps({
+                    "ultron_tool": "create_task",
+                    "arguments": {"title": "Review my notes", "due_date": "2026-11-08"},
+                })
+            else:
+                yield "Added the task to your list."
+
+        with patch.object(chat_blueprint.ollama, "stream_chat", fake_stream_chat):
+            response = client.post(
+                f"/api/conversations/{conversation['id']}/stream", json={}, buffered=True
+            )
+
+        body = response.get_data(as_text=True)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(
+            [task["title"] for task in client.get("/api/tasks").get_json()["tasks"]],
+            ["Review my notes"],
+        )
+        self.assertIn("Added the task to your list.", body)
+        self.assertNotIn("Okay, added that to your tasks.", body)
+        self.assertTrue(any(
+            "The user directly requested a calendar or task change" in message["content"]
+            for message in calls[1]
+        ))
+
     def test_offline_search_returns_browser_fallback(self):
         reply = chat_blueprint._format_web_search_result(
             "gaming laptop specs",
@@ -460,6 +539,7 @@ class ChatBehaviorTests(unittest.TestCase):
         system_prompt = next(message["content"] for message in captured_messages[0] if message["role"] == "system")
         self.assertIn("ordinary language", system_prompt)
         self.assertIn("do not ask the user to follow a template", system_prompt)
+        self.assertIn("never show it to the user or ask them to repeat a date that way", system_prompt)
         self.assertIn("These tool instructions are internal", system_prompt)
         tasks = client.get("/api/tasks").get_json()["tasks"]
         self.assertEqual([task["title"] for task in tasks], ["Kite design"])
@@ -502,6 +582,18 @@ class ProductivityWorkspaceTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def test_task_time_triggers_reminder_at_its_due_time(self):
+        due_time = (datetime.now() - timedelta(minutes=1)).strftime("%H:%M")
+        created = self.client.post(
+            "/api/tasks",
+            json={"title": "Timed reminder", "due_date": date.today().isoformat(), "due_time": due_time},
+        ).get_json()["task"]
+
+        notifications = self.client.get("/api/notifications").get_json()["notifications"]
+        reminder = next(item for item in notifications if item["source_type"] == "task")
+        self.assertEqual(reminder["source_id"], created["id"])
+        self.assertEqual(reminder["due_at"], f"{created['due_date']} {due_time}:00")
 
     def test_document_folder_search_and_ai_suggestion_do_not_overwrite(self):
         folder = self.client.post(
