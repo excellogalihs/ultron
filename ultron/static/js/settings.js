@@ -1,4 +1,4 @@
-/* Settings — live Ollama connection check and form feedback. */
+/* Settings — live Ollama connection check, appearance sync, and AJAX persistence. */
 
 (() => {
   const form = document.getElementById("settings-form");
@@ -17,9 +17,42 @@
     temperatureOutput.textContent = Number(temperature.value).toFixed(1);
   });
 
-  form.addEventListener("submit", () => {
+  // AJAX save to prevent page reload and form state reset
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
     saveButton.disabled = true;
     saveButton.textContent = "Saving…";
+
+    const formData = new FormData(form);
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: formData,
+        headers: { Accept: "application/json" },
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Failed to save settings.");
+      }
+
+      // Update document root data attributes immediately
+      const themeVal = formData.get("theme");
+      const accentVal = formData.get("accent");
+      const fontVal = formData.get("font");
+      if (themeVal) document.documentElement.dataset.theme = themeVal;
+      if (accentVal) document.documentElement.dataset.accent = accentVal;
+      if (fontVal) document.documentElement.dataset.font = fontVal;
+
+      Ultron.toast(data.message || "Settings saved locally.", "success");
+    } catch (error) {
+      Ultron.toast(error.message || "Could not save settings.", "error");
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = "Save settings";
+    }
   });
 
   testButton.addEventListener("click", async () => {
@@ -96,9 +129,11 @@
       option.selected = model.id === selected;
       modelSelect.appendChild(option);
     });
-  };
 
-  testButton.click();
+    if (window.UltronSelects && typeof window.UltronSelects.refresh === "function") {
+      window.UltronSelects.refresh(modelSelect);
+    }
+  };
 
   // Live appearance preview
   const themeSelect = document.getElementById("theme");
@@ -140,5 +175,4 @@
       }
     });
   }
-
 })();

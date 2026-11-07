@@ -434,6 +434,25 @@ class DocumentImportExportAndSettingsTests(unittest.TestCase):
         )
         self.assertEqual(save_res.status_code, 200)
 
+        # Verify settings persisted
+        with self.app.app_context():
+            from ultron.helpers import get_settings
+            current = get_settings()
+            self.assertEqual(current["theme"], "nord")
+            self.assertEqual(current["accent"], "emerald")
+            self.assertEqual(current["font"], "sans")
+            self.assertEqual(current["chat_send_key"], "ctrl_enter")
+            self.assertEqual(current["operator_name"], "Commander")
+
+        # Verify AJAX save response
+        ajax_res = self.client.post(
+            "/settings",
+            data={"operator_name": "Commander 2", "theme": "oled"},
+            headers={"Accept": "application/json"},
+        )
+        self.assertEqual(ajax_res.status_code, 200)
+        self.assertTrue(ajax_res.get_json()["ok"])
+
         # Export JSON backup
         export_res = self.client.get("/settings/export")
         self.assertEqual(export_res.status_code, 200)

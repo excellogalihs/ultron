@@ -18,10 +18,13 @@ from flask import (
 )
 
 from ..constants import (
+    ACCENTS,
     APP_VERSION,
     DEFAULT_MODEL,
     DEFAULT_SETTINGS,
+    FONTS,
     SUPPORTED_MODELS,
+    THEMES,
 )
 from ..db import get_db
 from ..helpers import clear_settings_cache, get_settings, now_str
@@ -95,30 +98,59 @@ def save():
 
     operator_name = (form.get("operator_name") or "").strip() or DEFAULT_SETTINGS["operator_name"]
     if len(operator_name) > 80:
-        errors.append("Display name must be under 80 characters.")
+        operator_name = operator_name[:80]
 
     model = (form.get("default_model") or DEFAULT_MODEL).strip()
     if not ollama.valid_model_name(model):
-        errors.append("Choose a valid locally installed model.")
+        model = DEFAULT_MODEL
 
-    ollama_url = (form.get("ollama_url") or DEFAULT_SETTINGS["ollama_url"]).strip().rstrip("/")
-    parsed_url = urlparse(ollama_url)
+    raw_url = (form.get("ollama_url") or DEFAULT_SETTINGS["ollama_url"]).strip().rstrip("/")
+    if raw_url and "://" not in raw_url:
+        raw_url = f"http://{raw_url}"
+    parsed_url = urlparse(raw_url)
     if parsed_url.scheme not in ("http", "https") or not parsed_url.netloc:
         errors.append("Ollama URL must be a valid http:// or https:// address.")
+        ollama_url = DEFAULT_SETTINGS["ollama_url"]
+    else:
+        ollama_url = raw_url
 
     try:
         temperature = float(form.get("temperature", "0.7"))
-        if temperature < 0 or temperature > 2:
-            raise ValueError
+        temperature = max(0.0, min(2.0, temperature))
     except (TypeError, ValueError):
-        errors.append("Temperature must be a number between 0 and 2.")
         temperature = 0.7
 
     system_prompt = (form.get("system_prompt") or "").strip()
     if len(system_prompt) > 4000:
-        errors.append("System prompt must be under 4000 characters.")
+        system_prompt = system_prompt[:4000]
+
+    use_memory = "1" if form.get("use_memory") == "1" else "0"
+
+    theme = form.get("theme") or DEFAULT_SETTINGS["theme"]
+    if theme not in THEMES:
+        theme = DEFAULT_SETTINGS["theme"]
+
+    accent = form.get("accent") or DEFAULT_SETTINGS["accent"]
+    if accent not in ACCENTS:
+        accent = DEFAULT_SETTINGS["accent"]
+
+    font = form.get("font") or DEFAULT_SETTINGS["font"]
+    if font not in FONTS:
+        font = DEFAULT_SETTINGS["font"]
+
+    chat_send_key = form.get("chat_send_key") or DEFAULT_SETTINGS["chat_send_key"]
+    if chat_send_key not in ("enter", "ctrl_enter"):
+        chat_send_key = DEFAULT_SETTINGS["chat_send_key"]
+
+    web_search_enabled = "1" if form.get("web_search_enabled") == "1" else "0"
+    voice_enabled = "1" if form.get("voice_enabled") == "1" else "0"
+    voice_auto_speak = "1" if form.get("voice_auto_speak") == "1" else "0"
+
+    wants_json = request.is_json or "application/json" in request.headers.get("Accept", "")
 
     if errors:
+        if wants_json:
+            return jsonify(ok=False, error="; ".join(errors)), 400
         for message in errors:
             flash(message, "error")
         return redirect(url_for("settings.index"))
@@ -129,9 +161,19 @@ def save():
     _upsert(db, "ollama_url", ollama_url)
     _upsert(db, "temperature", temperature)
     _upsert(db, "system_prompt", system_prompt)
-    _upsert(db, "use_memory", "1" if form.get("use_memory") == "1" else "0")
+    _upsert(db, "use_memory", use_memory)
+    _upsert(db, "theme", theme)
+    _upsert(db, "accent", accent)
+    _upsert(db, "font", font)
+    _upsert(db, "chat_send_key", chat_send_key)
+    _upsert(db, "web_search_enabled", web_search_enabled)
+    _upsert(db, "voice_enabled", voice_enabled)
+    _upsert(db, "voice_auto_speak", voice_auto_speak)
     db.commit()
     clear_settings_cache()
+
+    if wants_json:
+        return jsonify(ok=True, message="Settings saved locally.")
 
     flash("Settings saved locally.", "success")
     return redirect(url_for("settings.index"))
