@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% block content %}
+<section class="page-head">
+  <div><div class="eyebrow">LOCAL INDEX · FTS5 WHEN AVAILABLE</div><h1>Workspace search</h1><p>Search documents, conversations, tasks, events, memories, knowledge files, and projects.</p></div>
+</section>
+<section class="panel workspace-search">
+  <form method="get" action="{{ url_for('search.index') }}">
+    <label class="sr-only" for="workspace-query">Search the workspace</label>
+    <div class="workspace-search__bar"><span>{{ icon('search',18) }}</span><input id="workspace-query" name="q" value="{{ query }}" placeholder="Find a phrase, topic, or item…" autofocus><button class="btn btn--primary" type="submit">Search</button></div>
+    <div class="workspace-search__filters">{% for key, (_, label) in types.items() %}<label><input type="checkbox" name="type" value="{{ key }}"{% if not selected or key in selected %} checked{% endif %}>{{ label }}</label>{% endfor %}</div>
+  </form>
+</section>
+{% if query %}<div class="section-heading"><h2>{{ results|length }} result{{ '' if results|length == 1 else 's' }}</h2><span>{{ 'FULL-TEXT INDEX' if used_fts else 'LIGHTWEIGHT FALLBACK' }}</span></div>
+<section class="workspace-results">{% for item in results %}<a class="panel workspace-result" href="{{ item.href }}"><div class="workspace-result__meta"><span>{{ item.label|upper }}</span><time>{{ item.updated_at or '' }}</time></div><h3>{{ item.title }}</h3><p>{{ item.snippet }}</p><span class="workspace-result__open">Open item {{ icon('arrow-right',14) }}</span></a>{% else %}<div class="panel empty"><p>No matching workspace items found.</p></div>{% endfor %}</section>{% endif %}
+{% endblock %}

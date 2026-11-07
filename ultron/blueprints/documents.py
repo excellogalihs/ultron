@@ -1,7 +1,8 @@
-from pathlib import Path
 """Documents: local notes with a lightweight editor."""
 
 import json
+import mimetypes
+from pathlib import Path
 
 from flask import (
     Blueprint,
@@ -13,10 +14,11 @@ from flask import (
     stream_with_context,
 )
 
-from ..constants import DOCUMENT_FORMATS
+from ..constants import DOCUMENT_FORMATS, MAX_CHAT_ATTACHMENT_LENGTH
 from ..db import get_db
 from ..helpers import get_settings, now_str
 from ..services import ollama
+from ..services.document_files import DOCX_MIME, make_docx, read_document
 
 bp = Blueprint("documents", __name__)
 
@@ -132,7 +134,7 @@ def api_list():
         params.append(folder_id)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     rows = db.execute(
-        f"SELECT id, title, folder_id, format, length(content) AS character_count, "
+        f"SELECT id, title, folder_id, format, file_type, length(content) AS character_count, "
         f"substr(content, 1, 120) AS preview, created_at, updated_at "
         f"FROM documents {where} ORDER BY updated_at DESC, id DESC LIMIT 200",
         params,
@@ -289,6 +291,9 @@ def api_assist_document(document_id):
     if document is None:
         return jsonify(error="Document not found."), 404
 
+    if not selected_text and len(document["content"]) > MAX_CHAT_ATTACHMENT_LENGTH:
+        return jsonify(error=f"This document is longer than {MAX_CHAT_ATTACHMENT_LENGTH:,} characters. Select a passage to edit, or split the file into smaller documents."), 400
+
     target_text = selected_text or document["content"]
     settings = get_settings()
     model = settings.get("default_model", "gemma3:1b")
@@ -303,8 +308,8 @@ def api_assist_document(document_id):
         f"Action: {AI_ACTIONS[action]}\n"
         f"User instruction: {instruction or 'None'}\n"
         f"Document title: {document['title']}\n"
-        f"Document context:\n{document['content'][:30000]}\n\n"
-        f"Target text:\n{target_text[:20000]}\n\n"
+        f"Document context:\n{document['content'][:MAX_CHAT_ATTACHMENT_LENGTH]}\n\n"
+        f"Target text:\n{target_text[:MAX_CHAT_ATTACHMENT_LENGTH]}\n\n"
         "Return only the proposed text or answer. The document must remain unchanged until the user accepts it."
     )
     message_list = [
@@ -349,12 +354,41 @@ def api_export(document_id):
     if row is None:
         return jsonify(error="Document not found."), 404
     fmt = request.args.get("format") or row["format"] or "markdown"
-    ext = "md" if fmt == "markdown" else "txt"
+    ext = (row["file_type"] or (".md" if fmt == "markdown" else ".txt")).lower()
+    if not ext.startswith("."):
+        ext = f".{ext}"
     title = row["title"] or "untitled"
     safe_title = "".join(c for c in title if c.isalnum() or c in " ._-").strip() or "document"
-    filename = f"{safe_title}.{ext}"
+    filename = f"{safe_title}{ext}"
     content = row["content"] or ""
-    response = Response(content, mimetype="text/markdown" if ext == "md" else "text/plain")
+    if ext == ".docx":
+        response = Response(make_docx(content), mimetype=DOCX_MIME)
+    else:
+        mime = "text/markdown" if ext in (".md", ".markdown") else mimetypes.guess_type(filename)[0] or "text/plain"
+        response = Response(content, mimetype=mime)
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@bp.post("/api/documents/<int:document_id>/export")
+def api_export_suggestion(document_id):
+    data = request.get_json(silent=True) or {}
+    content = data.get("content")
+    if not isinstance(content, str) or len(content) > MAX_CONTENT_LENGTH:
+        return jsonify(error="Generated document is too large or invalid."), 400
+    row = get_db().execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    if row is None:
+        return jsonify(error="Document not found."), 404
+    ext = (row["file_type"] or (".md" if row["format"] == "markdown" else ".txt")).lower()
+    if not ext.startswith("."):
+        ext = f".{ext}"
+    safe_title = "".join(c for c in (row["title"] or "document") if c.isalnum() or c in " ._-").strip() or "document"
+    filename = f"{safe_title}{ext}"
+    if ext == ".docx":
+        response = Response(make_docx(content), mimetype=DOCX_MIME)
+    else:
+        mime = "text/markdown" if ext in (".md", ".markdown") else mimetypes.guess_type(filename)[0] or "text/plain"
+        response = Response(content, mimetype=mime)
     response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
 
@@ -382,11 +416,12 @@ def api_import():
         uploaded = request.files["file"]
         filename = uploaded.filename or "imported_document.txt"
         title = Path(filename).stem or "Imported Document"
+        file_type = Path(filename).suffix.lower()
         try:
-            content = uploaded.read().decode("utf-8", "replace")
-        except Exception as error:
-            return jsonify(error=f"Could not read uploaded file: {error}"), 400
-        fmt = "markdown" if filename.lower().endswith((".md", ".markdown")) else "text"
+            content = read_document(filename, uploaded.read())
+        except ValueError as error:
+            return jsonify(error=str(error)), 400
+        fmt = "markdown" if file_type in (".md", ".markdown") else "text"
         folder_raw = request.form.get("folder_id")
         if folder_raw:
             try:
@@ -398,6 +433,7 @@ def api_import():
         title = (data.get("title") or "Imported Document").strip()
         content = data.get("content") or ""
         fmt = data.get("format") or "markdown"
+        file_type = ""
         try:
             folder_id = _folder_value(data.get("folder_id"), db)
         except ValueError:
@@ -409,14 +445,16 @@ def api_import():
         title = title[:MAX_TITLE_LENGTH]
     if len(content) > MAX_CONTENT_LENGTH:
         return jsonify(error="Imported content exceeds maximum allowed size."), 400
+    if request.form.get("context") == "chat" and len(content) > MAX_CHAT_ATTACHMENT_LENGTH:
+        return jsonify(error=f"Chat attachments must be {MAX_CHAT_ATTACHMENT_LENGTH:,} characters or less. Import this file in Documents to work with longer files."), 400
 
     timestamp = now_str()
     cursor = db.execute(
         """
-        INSERT INTO documents (title, content, folder_id, format, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO documents (title, content, folder_id, format, file_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (title, content, folder_id, fmt, timestamp, timestamp),
+        (title, content, folder_id, fmt, file_type, timestamp, timestamp),
     )
     db.commit()
     row = db.execute("SELECT * FROM documents WHERE id = ?", (cursor.lastrowid,)).fetchone()

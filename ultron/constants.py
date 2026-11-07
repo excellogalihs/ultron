@@ -39,8 +39,8 @@ DEFAULT_SETTINGS = {
     "accent": "violet",
     "font": "jetbrains",
     "web_search_enabled": "1",
-    "voice_enabled": "1",
-    "voice_auto_speak": "0",
+    "task_reminder_time": "09:00",
+    "event_reminder_minutes": "10",
     "chat_send_key": "enter",
 }
 
@@ -48,4 +48,5 @@ TASK_PRIORITIES = ("high", "normal", "low")
 TASK_CATEGORIES = ("general", "work", "study", "personal", "health")
 EVENT_CATEGORIES = ("general", "work", "study", "personal", "health")
 DOCUMENT_FORMATS = ("markdown", "text")
+MAX_CHAT_ATTACHMENT_LENGTH = 30000
 MEMORY_CATEGORIES = ("general", "fact", "preference", "project")

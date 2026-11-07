@@ -36,20 +36,20 @@ def index():
     db = get_db()
     where = ""
     if view == "pending":
-        where = "WHERE status = 'pending'"
+        where = "WHERE tasks.status = 'pending'"
     elif view == "completed":
-        where = "WHERE status = 'completed'"
+        where = "WHERE tasks.status = 'completed'"
 
     tasks = db.execute(
         f"""
-        SELECT * FROM tasks
+        SELECT tasks.*,projects.name AS project_name FROM tasks LEFT JOIN projects ON projects.id=tasks.project_id
         {where}
         ORDER BY
-            CASE status WHEN 'pending' THEN 0 ELSE 1 END,
+            CASE tasks.status WHEN 'pending' THEN 0 ELSE 1 END,
             CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
             CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
-            due_date ASC,
-            id DESC
+            tasks.due_date ASC,
+            tasks.id DESC
         """
     ).fetchall()
 
@@ -73,6 +73,7 @@ def index():
         priorities=TASK_PRIORITIES,
         categories=TASK_CATEGORIES,
         today_value=now_str()[:10],
+        projects=db.execute("SELECT id,name,status FROM projects ORDER BY name COLLATE NOCASE").fetchall(),
     )
 
 
@@ -114,12 +115,17 @@ def api_create():
         return jsonify(error=str(error)), 400
 
     db = get_db()
+    project_id = data.get("project_id")
+    if project_id in ("", None):
+        project_id = None
+    elif not isinstance(project_id, int) or not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone():
+        return jsonify(error="Choose a valid project."), 400
     cursor = db.execute(
         """
-        INSERT INTO tasks (title, notes, status, priority, category, due_date, created_at)
-        VALUES (?, ?, 'pending', ?, ?, ?, ?)
+        INSERT INTO tasks (title, notes, status, priority, category, due_date, project_id, created_at)
+        VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)
         """,
-        (title, notes, priority, category, due_date, now_str()),
+        (title, notes, priority, category, due_date, project_id, now_str()),
     )
     db.commit()
     row = db.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone()
@@ -174,6 +180,13 @@ def api_update(task_id):
             return jsonify(error=str(error)), 400
         fields.append("due_date = ?")
         params.append(due_date)
+
+    if "project_id" in data:
+        project_id = data.get("project_id") or None
+        if project_id is not None and (not isinstance(project_id, int) or not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone()):
+            return jsonify(error="Choose a valid project."), 400
+        fields.append("project_id = ?")
+        params.append(project_id)
 
     if "status" in data:
         status = (data.get("status") or "").strip()

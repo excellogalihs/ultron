@@ -7,7 +7,7 @@
   <div>
     <span class="label label--muted">WORKSPACE / KNOWLEDGE</span>
     <h1 class="page-head__title">Documents<span class="accent">.</span></h1>
-    <p class="page-head__desc">Notes, references, and drafts stored in your local database.</p>
+    <p class="page-head__desc">Edit local notes and import Word, Markdown, or text files. Word layout is simplified to editable text.</p>
   </div>
   <div class="page-head__actions">
     <span class="count-badge">{{ documents|length }} {{ 'DOCUMENT' if documents|length == 1 else 'DOCUMENTS' }}</span>
@@ -32,16 +32,16 @@
       </select>
       <div style="display:flex;gap:6px;width:100%;">
         <button class="btn btn--small" type="button" id="new-folder-btn" style="flex:1;">{{ icon('plus', 13) }} Folder</button>
-        <button class="btn btn--small" type="button" id="doc-import-btn" style="flex:1;" title="Import text or Markdown file">{{ icon('upload', 13) }} Import</button>
+        <button class="btn btn--small" type="button" id="doc-import-btn" style="flex:1;" title="Import Word, Markdown, or text file">{{ icon('upload', 13) }} Import</button>
       </div>
-      <input type="file" id="doc-import-file" accept=".txt,.md,.markdown,.json,.csv,.py,.sql,.html,.css,.js" style="display:none" aria-label="Upload document">
+      <input type="file" id="doc-import-file" accept=".docx,.txt,.md,.markdown,.mdx,.rst,.csv,.tsv,.json,.jsonl,.ipynb,.xml,.html,.htm,.css,.js,.mjs,.ts,.tsx,.jsx,.vue,.svelte,.py,.sql,.sh,.bash,.zsh,.bat,.cmd,.ps1,.java,.kt,.go,.rs,.c,.h,.cpp,.hpp,.php,.rb,.swift,.dart,.pl,.r,.yaml,.yml,.toml,.ini,.cfg,.conf,.log,.tex,.properties,.gradle,.mk" style="display:none" aria-label="Upload document">
       <button class="btn btn--primary btn--block" type="button" id="new-document-btn-rail">{{ icon('plus', 14) }} New</button>
     </div>
     <div class="doc-list" id="doc-list" role="list">
       {% for doc in documents %}
       <a class="doc-item{% if selected_id == doc.id %} is-active{% endif %}" href="{{ url_for('documents.index') }}?doc={{ doc.id }}" data-doc-id="{{ doc.id }}" role="listitem">
         <span class="doc-item__title">{{ doc.title }}</span>
-        <span class="doc-item__meta">{{ doc.updated_at|humanize }} · {{ doc.format|upper }}</span>
+        <span class="doc-item__meta">{{ doc.updated_at|humanize }} · {{ (doc.file_type[1:] if doc.file_type else doc.format)|upper }}</span>
       </a>
       {% endfor %}
       <div class="doc-list__none" id="doc-filter-empty"{% if documents %} hidden{% endif %}>No documents match.</div>
@@ -71,7 +71,7 @@
             <option value="">Unfiled</option>
             {% for folder in folders %}<option value="{{ folder.id }}">{{ folder.name }}</option>{% endfor %}
           </select>
-          <a class="icon-btn" id="doc-export-btn" title="Export document (.md / .txt)" aria-label="Export document" download style="display:none;">{{ icon('download', 16) }}</a>
+          <a class="icon-btn" id="doc-export-btn" title="Download document in its original file format" aria-label="Download document" download style="display:none;">{{ icon('download', 16) }}</a>
           <button class="icon-btn icon-btn--danger" type="button" id="doc-delete" title="Delete document" aria-label="Delete document">{{ icon('trash', 16) }}</button>
           <button class="btn btn--primary" type="submit" id="doc-save">Save</button>
         </div>

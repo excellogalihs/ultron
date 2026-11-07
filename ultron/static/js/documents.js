@@ -90,7 +90,7 @@
       const meta = document.createElement("span");
       meta.className = "doc-item__meta";
       const date = formatDateTime(doc.updated_at) || "Not saved";
-      meta.textContent = `${date} · ${doc.format.toUpperCase()}`;
+      meta.textContent = `${date} · ${(doc.file_type || doc.format).replace(/^\./, "").toUpperCase()}`;
       item.append(title, meta);
       list.insertBefore(item, listEmpty);
     });
@@ -322,6 +322,13 @@
     saveDocument(true);
   });
 
+  exportButton?.addEventListener("click", async (event) => {
+    if (!dirty) return;
+    event.preventDefault();
+    if (!(await saveDocument())) return;
+    window.location.assign(exportButton.href);
+  });
+
   deleteButton.addEventListener("click", async () => {
     if (currentId === null || !window.confirm("Delete this document? This cannot be undone.")) return;
     try {
@@ -551,20 +558,11 @@
       if (!file) return;
 
       try {
-        const textContent = await file.text();
-        const baseTitle = file.name.replace(/\.[^/.]+$/, "") || "Imported Document";
-        const fmt = file.name.toLowerCase().endsWith(".md") || file.name.toLowerCase().endsWith(".markdown") ? "markdown" : "text";
         const folderVal = folderFilter.value === "none" ? null : (folderFilter.value || null);
-
-        const result = await Ultron.api("/api/documents/import", {
-          method: "POST",
-          body: {
-            title: baseTitle,
-            content: textContent,
-            format: fmt,
-            folder_id: folderVal,
-          },
-        });
+        const body = new FormData();
+        body.append("file", file);
+        if (folderVal) body.append("folder_id", folderVal);
+        const result = await Ultron.api("/api/documents/import", { method: "POST", body });
 
         if (result && result.document) {
           window.location.href = `/documents?doc=${result.document.id}`;

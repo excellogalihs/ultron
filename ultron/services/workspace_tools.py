@@ -4,14 +4,14 @@ import json
 import os
 import re
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ..constants import EVENT_CATEGORIES, MEMORY_CATEGORIES, TASK_CATEGORIES, TASK_PRIORITIES
 from ..helpers import now_str
 from . import web_search
 
-MAX_TOOL_CALLS = 3
+MAX_TOOL_CALLS = 8
 MAX_TOOL_RESULT_LENGTH = 12000
 MAX_WORKSPACE_FILES_SCANNED = 120
 MAX_WORKSPACE_FILE_BYTES = 256 * 1024
@@ -258,7 +258,7 @@ def _edit_document(db, arguments):
 def _create_task(db, arguments):
     args = _arguments(
         arguments,
-        {"title", "notes", "priority", "category", "due_date"},
+        {"title", "notes", "priority", "category", "due_date", "project_id"},
         {"title"},
     )
     title = _text(args["title"], "Task title", 300, required=True)
@@ -270,16 +270,20 @@ def _create_task(db, arguments):
     if category not in TASK_CATEGORIES:
         raise ToolError("Invalid task category.")
     due_date = _date(args.get("due_date"), "Due date", optional=True)
+    project_id = args.get("project_id")
+    if project_id is not None:
+        if isinstance(project_id, bool) or not isinstance(project_id, int) or not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone():
+            raise ToolError("Project id must identify an existing project.")
     cursor = db.execute(
-          """INSERT INTO tasks (title, notes, status, priority, category, due_date, created_at)
-              VALUES (?, ?, 'pending', ?, ?, ?, ?)""",
-          (title, notes, priority, category, due_date, now_str()),
+          """INSERT INTO tasks (title, notes, status, priority, category, due_date, project_id, created_at)
+              VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)""",
+          (title, notes, priority, category, due_date, project_id, now_str()),
     )
     return {"task": _row_dict(db.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone())}
 
 
 def _read_tasks(db, arguments):
-    args = _arguments(arguments, {"status", "category"})
+    args = _arguments(arguments, {"status", "category", "project_id"})
     status = args.get("status", "pending")
     if status not in ("pending", "completed", "all"):
         raise ToolError("Task status must be pending, completed, or all.")
@@ -294,17 +298,83 @@ def _read_tasks(db, arguments):
     if category:
         conditions.append("category = ?")
         params.append(category)
+    if "project_id" in args:
+        project_id = args["project_id"]
+        if isinstance(project_id, bool) or not isinstance(project_id, int) or not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone():
+            raise ToolError("Project id must identify an existing project.")
+        conditions.append("project_id = ?")
+        params.append(project_id)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     rows = db.execute(
-        f"""SELECT id, title, notes, status, priority, category, due_date, created_at
+        f"""SELECT id, title, notes, status, priority, category, due_date, project_id, created_at
             FROM tasks {where}
             ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END,
                 CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
                 CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, id DESC
-            LIMIT 30""",
+            LIMIT 100""",
         params,
     ).fetchall()
     return {"tasks": [_row_dict(row) for row in rows]}
+
+
+def _update_task(db, arguments):
+    allowed = {"id", "title", "notes", "priority", "category", "due_date", "status", "project_id"}
+    args = _arguments(arguments, allowed, {"id"})
+    task_id = args["id"]
+    if isinstance(task_id, bool) or not isinstance(task_id, int):
+        raise ToolError("Task id must be an integer.")
+    row = db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    if row is None:
+        raise ToolError("Task not found.")
+    fields, values = [], []
+    if "title" in args:
+        fields.append("title = ?")
+        values.append(_text(args["title"], "Task title", 300, required=True))
+    if "notes" in args:
+        fields.append("notes = ?")
+        values.append(_text(args["notes"], "Task notes", 4000))
+    if "priority" in args:
+        if args["priority"] not in TASK_PRIORITIES:
+            raise ToolError("Priority must be low, normal, or high.")
+        fields.append("priority = ?")
+        values.append(args["priority"])
+    if "category" in args:
+        if args["category"] not in TASK_CATEGORIES:
+            raise ToolError("Invalid task category.")
+        fields.append("category = ?")
+        values.append(args["category"])
+    if "due_date" in args:
+        fields.append("due_date = ?")
+        values.append(_date(args["due_date"], "Due date", optional=True))
+    if "project_id" in args:
+        project_id = args["project_id"]
+        if project_id is not None and (isinstance(project_id, bool) or not isinstance(project_id, int) or not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone()):
+            raise ToolError("Project id must identify an existing project.")
+        fields.append("project_id = ?")
+        values.append(project_id)
+    if "status" in args:
+        status = args["status"]
+        if status not in ("pending", "completed"):
+            raise ToolError("Task status must be pending or completed.")
+        fields.extend(("status = ?", "completed_at = ?"))
+        values.extend((status, now_str() if status == "completed" else None))
+    if not fields:
+        raise ToolError("Provide at least one task field to update.")
+    values.append(task_id)
+    db.execute(f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?", values)
+    return {"task": _row_dict(db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone())}
+
+
+def _delete_task(db, arguments):
+    args = _arguments(arguments, {"id"}, {"id"})
+    task_id = args["id"]
+    if isinstance(task_id, bool) or not isinstance(task_id, int):
+        raise ToolError("Task id must be an integer.")
+    row = db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    if row is None:
+        raise ToolError("Task not found.")
+    db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    return {"deleted_task": _row_dict(row)}
 
 
 def _read_calendar_events(db, arguments):
@@ -313,15 +383,15 @@ def _read_calendar_events(db, arguments):
     date_to = _date(args.get("date_to"), "End date", optional=True)
     conditions = []
     params = []
-    if date_from:
-        conditions.append("start_at >= ?")
-        params.append(f"{date_from} 00:00:00")
+    conditions.append("start_at >= ?")
+    params.append(f"{date_from or now_str()[:10]} 00:00:00")
     if date_to:
+        day_after = datetime.strptime(date_to, "%Y-%m-%d").date() + timedelta(days=1)
         conditions.append("start_at < ?")
-        params.append(f"{datetime.strptime(date_to, '%Y-%m-%d').date().isoformat()} 23:59:59")
+        params.append(f"{day_after.isoformat()} 00:00:00")
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     rows = db.execute(
-        f"SELECT * FROM events {where} ORDER BY start_at ASC LIMIT 20", params
+        f"SELECT * FROM events {where} ORDER BY start_at ASC LIMIT 100", params
     ).fetchall()
     return {"events": [_row_dict(row) for row in rows]}
 
@@ -350,6 +420,51 @@ def _create_calendar_event(db, arguments):
         ),
     )
     return {"event": _row_dict(db.execute("SELECT * FROM events WHERE id = ?", (cursor.lastrowid,)).fetchone())}
+
+
+def _update_calendar_event(db, arguments):
+    allowed = {"id", "title", "date", "start_time", "end_time", "description", "category"}
+    args = _arguments(arguments, allowed, {"id"})
+    event_id = args["id"]
+    if isinstance(event_id, bool) or not isinstance(event_id, int):
+        raise ToolError("Event id must be an integer.")
+    row = db.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+    if row is None:
+        raise ToolError("Calendar event not found.")
+    day = _date(args.get("date", row["start_at"][:10]), "Event date")
+    start_value = args.get("start_time", row["start_at"][11:16])
+    start_time = _time(start_value, "Start time")
+    if start_time is None:
+        raise ToolError("Start time must use HH:MM.")
+    if "end_time" in args:
+        end_value = args["end_time"]
+    else:
+        end_value = row["end_at"][11:16] if row["end_at"] else None
+    end_time = _time(end_value, "End time")
+    if end_value not in (None, "") and end_time is None:
+        raise ToolError("End time must use HH:MM.")
+    title = _text(args.get("title", row["title"]), "Event title", 200, required=True)
+    description = _text(args.get("description", row["description"]), "Event description", 2000)
+    category = args.get("category", row["category"])
+    if category not in EVENT_CATEGORIES:
+        raise ToolError("Invalid event category.")
+    db.execute(
+        "UPDATE events SET title = ?, description = ?, start_at = ?, end_at = ?, category = ? WHERE id = ?",
+        (title, description, f"{day} {start_time}:00", f"{day} {end_time}:00" if end_time else None, category, event_id),
+    )
+    return {"event": _row_dict(db.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone())}
+
+
+def _delete_calendar_event(db, arguments):
+    args = _arguments(arguments, {"id"}, {"id"})
+    event_id = args["id"]
+    if isinstance(event_id, bool) or not isinstance(event_id, int):
+        raise ToolError("Event id must be an integer.")
+    row = db.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+    if row is None:
+        raise ToolError("Calendar event not found.")
+    db.execute("DELETE FROM events WHERE id = ?", (event_id,))
+    return {"deleted_event": _row_dict(row)}
 
 
 def _read_memory(db, arguments):
@@ -491,8 +606,12 @@ _TOOL_HANDLERS = {
     "edit_document": _edit_document,
     "create_task": _create_task,
     "read_tasks": _read_tasks,
+    "update_task": _update_task,
+    "delete_task": _delete_task,
     "read_calendar_events": _read_calendar_events,
     "create_calendar_event": _create_calendar_event,
+    "update_calendar_event": _update_calendar_event,
+    "delete_calendar_event": _delete_calendar_event,
     "read_memory": _read_memory,
     "save_memory": _save_memory,
 }
@@ -509,6 +628,28 @@ def parse_tool_call(text, fallback_query=None):
         payload = json.loads(candidate)
     except (TypeError, ValueError):
         payload = None
+
+    # Small local models often add a short explanation before or after the
+    # JSON object, even when prompted to return JSON only. Recover the first
+    # recognizable object while still validating the tool name below.
+    if payload is None and candidate:
+        decoder = json.JSONDecoder()
+        for position, character in enumerate(candidate):
+            if character != "{":
+                continue
+            try:
+                item, _ = decoder.raw_decode(candidate, position)
+            except ValueError:
+                continue
+            has_name = isinstance(item, dict) and any(
+                key in item for key in ("ultron_tool", "ultrontool", "tool", "tool_name")
+            )
+            has_arguments = isinstance(item, dict) and any(
+                key in item for key in ("arguments", "parameters", "args", "input", "function_call", "tool_call", "call")
+            )
+            if has_name and (has_arguments or len(item) > 1):
+                payload = item
+                break
 
     # Some models concatenate a tool label and its arguments as separate JSON
     # objects, sometimes with a misspelled envelope key. Accept only known
@@ -548,6 +689,10 @@ def parse_tool_call(text, fallback_query=None):
                 }
                 name = names.get(normalized)
                 arguments = objects[index + 1]
+                if name is None and normalized in {item.replace("_", "") for item in _TOOL_HANDLERS}:
+                    name = next(item for item in _TOOL_HANDLERS if item.replace("_", "") == normalized)
+                    if isinstance(arguments, dict) and arguments:
+                        return name, arguments
                 if name and set(arguments) == {"query"} and isinstance(arguments["query"], str):
                     query = arguments["query"].strip()
                     if query:
@@ -576,19 +721,61 @@ def parse_tool_call(text, fallback_query=None):
             name = "web_search" if any(label in {"web_search", "search_web"} for label in labels) else "search_workspace"
             return name, {"query": fallback_query.strip()}
 
-    if not isinstance(payload, dict) or set(payload) != {"ultron_tool", "arguments"}:
+    if (
+        isinstance(payload, dict)
+        and set(payload) == {"ultron_tool"}
+        and fallback_query
+        and payload["ultron_tool"] in {"web_search", "search_web", "search_workspace"}
+    ):
+        name = "search_workspace" if payload["ultron_tool"] == "search_workspace" else "web_search"
+        return name, {"query": fallback_query.strip()}
+
+    if isinstance(payload, dict):
+        for wrapper_key in ("function_call", "tool_call", "call"):
+            if isinstance(payload.get(wrapper_key), dict):
+                payload = payload[wrapper_key]
+                break
+    if not isinstance(payload, dict):
         return None
-    raw_name = payload["ultron_tool"]
+    raw_name = next(
+        (payload[key] for key in ("ultron_tool", "ultrontool", "tool_name", "tool", "name") if key in payload),
+        None,
+    )
     if not isinstance(raw_name, str):
         return None
-    name = {"search_web": "web_search"}.get(raw_name, raw_name)
-    if name in {"web_search", "search_workspace"} and payload.get("arguments") == {} and fallback_query:
+    normalized = re.sub(r"[\s-]+", "_", raw_name.strip().lower())
+    name = {
+        "search_web": "web_search",
+        "list_tasks": "read_tasks",
+        "get_tasks": "read_tasks",
+        "task_list": "read_tasks",
+        "list_events": "read_calendar_events",
+        "get_events": "read_calendar_events",
+        "list_calendar_events": "read_calendar_events",
+        "get_calendar_events": "read_calendar_events",
+        "create_event": "create_calendar_event",
+        "add_event": "create_calendar_event",
+        "add_calendar_event": "create_calendar_event",
+        "update_event": "update_calendar_event",
+        "delete_event": "delete_calendar_event",
+        "add_task": "create_task",
+        "edit_task": "update_task",
+        "edit_event": "update_calendar_event",
+        "edit_calendar_event": "update_calendar_event",
+    }.get(normalized, normalized)
+    argument_key = next((key for key in ("arguments", "parameters", "args", "input") if key in payload), None)
+    if argument_key is not None:
+        arguments = payload[argument_key]
+    else:
+        name_keys = {"ultron_tool", "ultrontool", "tool_name", "tool", "name"}
+        arguments = {key: value for key, value in payload.items() if key not in name_keys}
+    if name in {"web_search", "search_workspace"} and arguments == {} and fallback_query:
         return name, {"query": fallback_query.strip()}
     if not isinstance(name, str) or name not in _TOOL_HANDLERS:
         return None
-    if not isinstance(payload["arguments"], dict):
+    if not isinstance(arguments, dict):
         return None
-    return name, payload["arguments"]
+    return name, arguments
 
 
 def execute_tool(database_path, name, arguments, workspace_root=None):

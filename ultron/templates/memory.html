@@ -46,7 +46,7 @@
   <section class="memory-list" id="memory-list">
     {% if memories %}
       {% for memory in memories %}
-      <article class="panel memory-card{% if not memory.active %} is-inactive{% endif %}" data-memory-id="{{ memory.id }}">
+      <article class="panel memory-card{% if not memory.active %} is-inactive{% endif %}" id="memory-{{ memory.id }}" data-memory-id="{{ memory.id }}">
         <div class="memory-card__head">
           <span class="tag tag--accent">{{ memory.category|upper }}</span>
           <button class="switch{% if memory.active %} is-on{% endif %}" type="button" data-memory-toggle data-active="{{ memory.active }}" role="switch" aria-checked="{{ 'true' if memory.active else 'false' }}" aria-label="{{ 'Deactivate' if memory.active else 'Activate' }} memory">

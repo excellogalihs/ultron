@@ -4,7 +4,7 @@
 
 {% block content %}
 {% set current_model = conversation.model if conversation else settings.default_model %}
-<div class="chat-shell" id="chat-app" data-send-key="{{ settings.chat_send_key or 'enter' }}" data-auto-speak="{{ settings.voice_auto_speak or '0' }}" data-web-search="{{ settings.web_search_enabled or '1' }}"
+<div class="chat-shell" id="chat-app" data-send-key="{{ settings.chat_send_key or 'enter' }}" data-web-search="{{ settings.web_search_enabled or '1' }}"
      data-conversation-id="{{ conversation.id if conversation else '' }}"
      data-conversation-title="{{ conversation.title if conversation else '' }}"
      data-default-model="{{ current_model }}">
@@ -62,13 +62,10 @@
       </div>
 
       {% for message in messages %}
-      <div class="msg msg--{{ message.role }}" data-message-id="{{ message.id }}">
+      <div class="msg msg--{{ message.role }}" data-message-id="{{ message.id }}"{% if message.document_id %} data-document-id="{{ message.document_id }}" data-document-title="{{ message.attached_document_title }}{{ message.attached_file_type }}"{% endif %}>
         <div class="msg__meta">
           <span class="msg__role">{{ 'YOU' if message.role == 'user' else 'ULTRON' }}</span>
           <time datetime="{{ message.created_at }}">{{ message.created_at|humanize }}</time>
-          {% if message.role == 'assistant' and settings.voice_enabled == '1' %}
-          <button class="msg__speak icon-btn" type="button" title="Read response aloud" aria-label="Read response aloud">{{ icon('speaker', 13) }}</button>
-          {% endif %}
         </div>
         <div class="msg__body">{{ message.content }}</div>
       </div>
@@ -78,12 +75,16 @@
     <div class="chat-error" id="chat-error" role="alert" hidden></div>
 
     <form class="composer" id="chat-form" autocomplete="off">
+      <div class="composer-attachment" id="chat-attachment" hidden>
+        <span class="composer-attachment__name" id="chat-attachment-name"></span>
+        <span class="composer-attachment__hint">Saved in Documents</span>
+        <button type="button" class="composer-attachment__remove" id="chat-attachment-remove" aria-label="Remove attachment">×</button>
+      </div>
+      <input type="file" id="chat-attachment-file" accept=".docx,.txt,.md,.markdown,.mdx,.rst,.csv,.tsv,.json,.jsonl,.ipynb,.xml,.html,.htm,.css,.js,.mjs,.ts,.tsx,.jsx,.vue,.svelte,.py,.sql,.sh,.bash,.zsh,.bat,.cmd,.ps1,.java,.kt,.go,.rs,.c,.h,.cpp,.hpp,.php,.rb,.swift,.dart,.pl,.r,.yaml,.yml,.toml,.ini,.cfg,.conf,.log,.tex,.properties,.gradle,.mk" hidden>
       <div class="composer__field">
         <label class="sr-only" for="chat-input">Message ultron</label>
         <textarea id="chat-input" rows="1" placeholder="Message ultron…" maxlength="20000"></textarea>
-        {% if settings.voice_enabled == '1' %}
-        <button class="icon-btn composer__mic" type="button" id="chat-mic" title="Voice input (Speech to text)" aria-label="Voice input">{{ icon('mic', 16) }}</button>
-        {% endif %}
+        <button class="icon-btn composer__attach" type="button" id="chat-attach" title="Attach a document" aria-label="Attach a document">{{ icon('upload', 16) }}</button>
         <button class="icon-btn composer__stop" type="button" id="chat-stop" title="Stop generation" aria-label="Stop generation" hidden>{{ icon('close', 16) }}</button>
         <button class="composer__send" type="submit" id="chat-send" title="Send message" aria-label="Send message">{{ icon('send', 18) }}</button>
       </div>

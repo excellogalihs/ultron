@@ -34,12 +34,19 @@ bp = Blueprint("settings", __name__)
 
 TABLES = (
     "conversations",
-    "messages",
     "document_folders",
     "documents",
+    "projects",
+    "messages",
     "events",
     "tasks",
+    "notifications",
     "memories",
+    "knowledge_collections",
+    "knowledge_files",
+    "project_documents",
+    "project_conversations",
+    "project_knowledge_files",
 )
 
 
@@ -143,8 +150,18 @@ def save():
         chat_send_key = DEFAULT_SETTINGS["chat_send_key"]
 
     web_search_enabled = "1" if form.get("web_search_enabled") == "1" else "0"
-    voice_enabled = "1" if form.get("voice_enabled") == "1" else "0"
-    voice_auto_speak = "1" if form.get("voice_auto_speak") == "1" else "0"
+    try:
+        task_reminder_time = datetime.strptime(
+            form.get("task_reminder_time", get_settings().get("task_reminder_time", "09:00")), "%H:%M"
+        ).strftime("%H:%M")
+    except ValueError:
+        task_reminder_time = "09:00"
+    try:
+        event_reminder_minutes = int(form.get("event_reminder_minutes", get_settings().get("event_reminder_minutes", "10")))
+    except (TypeError, ValueError):
+        event_reminder_minutes = 10
+    if event_reminder_minutes not in (0, 5, 10, 15, 30, 60):
+        event_reminder_minutes = 10
 
     wants_json = request.is_json or "application/json" in request.headers.get("Accept", "")
 
@@ -167,8 +184,8 @@ def save():
     _upsert(db, "font", font)
     _upsert(db, "chat_send_key", chat_send_key)
     _upsert(db, "web_search_enabled", web_search_enabled)
-    _upsert(db, "voice_enabled", voice_enabled)
-    _upsert(db, "voice_auto_speak", voice_auto_speak)
+    _upsert(db, "task_reminder_time", task_reminder_time)
+    _upsert(db, "event_reminder_minutes", event_reminder_minutes)
     db.commit()
     clear_settings_cache()
 
@@ -211,7 +228,8 @@ def export_data():
         "data": {},
     }
     for table in TABLES:
-        rows = db.execute(f"SELECT * FROM {table} ORDER BY id ASC").fetchall()
+        order = "" if table in ("project_documents", "project_conversations", "project_knowledge_files") else " ORDER BY id ASC"
+        rows = db.execute(f"SELECT * FROM {table}{order}").fetchall()
         payload["data"][table] = [dict(row) for row in rows]
 
     body = json.dumps(payload, indent=2, ensure_ascii=False)

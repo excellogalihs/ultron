@@ -1,4 +1,6 @@
 import json
+import io
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -10,6 +12,8 @@ from ultron import create_app
 from ultron.blueprints import chat as chat_blueprint
 from ultron.blueprints import documents as documents_blueprint
 from ultron.services import ollama
+from ultron.services.document_files import make_docx, read_knowledge_file
+from ultron.services.workspace_search import retrieve_context, search_workspace
 from ultron.services.workspace_tools import (
     ToolError,
     execute_tool,
@@ -169,6 +173,205 @@ class WorkspaceToolTests(unittest.TestCase):
         self.assertIn("Python", memories[0]["content"])
 
 
+class GlobalWorkspaceTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.app = create_app({"TESTING": True, "DATABASE": str(Path(self.temporary.name) / "global.db")})
+        self.client = self.app.test_client()
+
+    def test_universal_fts_search_spans_workspace_types(self):
+        document = self.client.post("/api/documents", json={"title": "Python handbook", "content": "Python threading and networking reference"}).get_json()["document"]
+        self.client.post("/api/conversations", json={"first_message": "We discussed Python networking in the project."})
+        self.client.post("/api/tasks", json={"title": "Review Python networking", "due_date": date.today().isoformat()})
+        self.client.post("/api/events", json={"title": "Python review", "date": date.today().isoformat(), "description": "Discuss Python networking"})
+        self.client.post("/api/memories", json={"content": "Python networking is part of the systems course", "category": "fact"})
+        imported = self.client.post("/api/knowledge/import", data={"file": (io.BytesIO(b"Python networking textbook excerpt"), "course.txt")}, content_type="multipart/form-data")
+        self.assertEqual(imported.status_code, 201)
+        project = self.client.post("/api/projects", json={"name": "Python lab", "description": "Networking exercises"}).get_json()["project"]
+        self.client.post(f"/api/projects/{project['id']}/links", json={"type": "document", "id": document["id"]})
+        result = self.client.get("/api/search?q=Python").get_json()
+        self.assertTrue(result["fts"])
+        self.assertTrue({"document", "conversation", "task", "event", "memory", "knowledge", "project"}.issubset({item["type"] for item in result["results"]}))
+        self.assertTrue(all(item["href"].startswith("/") and item["snippet"] for item in result["results"]))
+        filtered = self.client.get("/api/search?q=Python&type=knowledge").get_json()["results"]
+        self.assertTrue(filtered)
+        self.assertEqual({item["type"] for item in filtered}, {"knowledge"})
+
+    def test_first_boot_indexes_existing_workspace_content(self):
+        database = Path(self.temporary.name) / "existing.db"
+        connection = sqlite3.connect(database)
+        schema = Path(__file__).resolve().parents[1] / "ultron" / "schema.sql"
+        connection.executescript(schema.read_text(encoding="utf-8"))
+        connection.execute("INSERT INTO documents(title,content,created_at,updated_at) VALUES(?,?,?,?)", ("Legacy guide", "Imported Python notes", "2026-01-01", "2026-01-01"))
+        connection.commit(); connection.close()
+        app = create_app({"TESTING": True, "DATABASE": str(database)})
+        with app.app_context():
+            from ultron.db import get_db
+            result = search_workspace(get_db(), "Python", ["documents"])
+        self.assertEqual(result["results"][0]["title"], "Legacy guide")
+
+    def test_search_index_upgrade_rebuilds_existing_fts_rows(self):
+        document = self.client.post("/api/documents", json={"title": "Upgrade notes", "content": "FTS upgradeable networking index"}).get_json()["document"]
+        with self.app.app_context():
+            from ultron.db import get_db
+            get_db().execute("UPDATE settings SET value='2' WHERE key='workspace_fts_version'")
+            get_db().commit()
+        upgraded = create_app({"TESTING": True, "DATABASE": str(Path(self.temporary.name) / "global.db")})
+        with upgraded.app_context():
+            from ultron.db import get_db
+            db = get_db()
+            result = search_workspace(db, "networking", ["documents"])
+            rows = db.execute("SELECT COUNT(*) FROM workspace_fts WHERE source='document' AND item_id=?", (document["id"],)).fetchone()[0]
+        self.assertTrue(result["results"])
+        self.assertEqual(rows, 1)
+
+    def test_search_falls_back_to_sqlite_like_without_fts5(self):
+        connection = sqlite3.connect(":memory:")
+        connection.row_factory = sqlite3.Row
+        schema = Path(__file__).resolve().parents[1] / "ultron" / "schema.sql"
+        connection.executescript(schema.read_text(encoding="utf-8"))
+        connection.execute("INSERT INTO documents(title,content,created_at,updated_at) VALUES(?,?,?,?)", ("Field notes", "Python networking on a small router", "2026-01-01", "2026-01-01"))
+        results = search_workspace(connection, "Python router", ["documents"])
+        self.assertFalse(results["fts"])
+        self.assertEqual(results["results"][0]["title"], "Field notes")
+        connection.close()
+
+    def test_knowledge_text_docx_duplicate_and_preview(self):
+        collection = self.client.post("/api/knowledge/collections", json={"name": "Networking"}).get_json()["collection"]
+        txt = self.client.post("/api/knowledge/import", data={"collection_id": str(collection["id"]), "file": (io.BytesIO(b"A concise networking guide"), "guide.txt")}, content_type="multipart/form-data")
+        self.assertEqual(txt.status_code, 201)
+        file_id = txt.get_json()["file"]["id"]
+        self.assertIn("networking", self.client.get(f"/api/knowledge/{file_id}").get_json()["file"]["content"])
+        self.assertEqual(self.client.get(f"/api/knowledge/{file_id}").get_json()["file"]["collection_id"], collection["id"])
+        duplicate = self.client.post("/api/knowledge/import", data={"file": (io.BytesIO(b"A concise networking guide"), "copy.txt")}, content_type="multipart/form-data")
+        self.assertEqual(duplicate.status_code, 409)
+        docx = make_docx("DOCX networking notes")
+        imported = self.client.post("/api/knowledge/import", data={"file": (io.BytesIO(docx), "notes.docx")}, content_type="multipart/form-data")
+        self.assertEqual(imported.status_code, 201)
+        self.assertIn("networking", self.client.get(f"/api/knowledge/{imported.get_json()['file']['id']}").get_json()["file"]["content"])
+        self.assertIn("DOCX networking", read_knowledge_file("sample.docx", docx))
+
+    def test_chat_receives_relevant_knowledge_with_a_source_link(self):
+        imported = self.client.post("/api/knowledge/import", data={"file": (io.BytesIO(b"TCP handshakes synchronize the client and server before data transfer."), "networking-textbook.txt")}, content_type="multipart/form-data")
+        file_id = imported.get_json()["file"]["id"]
+        conversation = self.client.post("/api/conversations", json={"first_message": "Summarize my networking textbook about TCP handshakes"}).get_json()
+        self.assertEqual(conversation["model"], "gemma3:1b")
+        captured = []
+        def fake_stream_chat(**kwargs):
+            captured.extend(kwargs["messages"])
+            yield "TCP handshakes synchronize both sides before data is sent."
+        with patch("ultron.blueprints.chat.ollama.stream_chat", fake_stream_chat):
+            response = self.client.post(f"/api/conversations/{conversation['id']}/stream", json={}, buffered=True)
+        self.assertEqual(response.status_code, 200)
+        user_prompt = next(message["content"] for message in captured if message["role"] == "user")
+        self.assertIn("TCP handshakes synchronize", user_prompt)
+        self.assertIn(f"/knowledge?file={file_id}", user_prompt)
+
+    def test_pdf_text_extraction_when_a_lightweight_extractor_exists(self):
+        import shutil
+        if not shutil.which("pdftotext"):
+            self.skipTest("pypdf or pdftotext must be installed for PDF extraction")
+        objects = [
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+            b"<< /Length 58 >>\nstream\nBT /F1 12 Tf 20 80 Td (PDF networking reference) Tj ET\nendstream",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        ]
+        pdf = bytearray(b"%PDF-1.4\n")
+        offsets = [0]
+        for index, obj in enumerate(objects, 1):
+            offsets.append(len(pdf)); pdf.extend(f"{index} 0 obj\n".encode()); pdf.extend(obj); pdf.extend(b"\nendobj\n")
+        xref = len(pdf); pdf.extend(f"xref\n0 {len(offsets)}\n0000000000 65535 f \n".encode())
+        for offset in offsets[1:]: pdf.extend(f"{offset:010d} 00000 n \n".encode())
+        pdf.extend(f"trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode())
+        text = read_knowledge_file("reference.pdf", bytes(pdf))
+        self.assertIn("networking", text.lower())
+
+    def test_project_lifecycle_and_bounded_context_retrieval(self):
+        created = self.client.post("/api/projects", json={"name": "Home network", "description": "Router setup", "notes": "Configure the lab network"})
+        self.assertEqual(created.status_code, 201)
+        project = created.get_json()["project"]
+        task = self.client.post("/api/tasks", json={"title": "Update router", "project_id": project["id"]}).get_json()["task"]
+        self.assertEqual(task["project_id"], project["id"])
+        doc = self.client.post("/api/documents", json={"title": "Router notes", "content": "Configure the home network router safely."}).get_json()["document"]
+        self.client.post(f"/api/projects/{project['id']}/links", json={"type": "document", "id": doc["id"]})
+        conversation = self.client.post("/api/conversations", json={"first_message": "Home network router setup"}).get_json()
+        knowledge = self.client.post("/api/knowledge/import", data={"file": (io.BytesIO(b"Home network configuration guide"), "network-guide.txt")}, content_type="multipart/form-data").get_json()["file"]
+        self.client.post(f"/api/projects/{project['id']}/links", json={"type": "conversation", "id": conversation["id"]})
+        self.client.post(f"/api/projects/{project['id']}/links", json={"type": "knowledge", "id": knowledge["id"]})
+        details = self.client.get(f"/api/projects/{project['id']}").get_json()["project"]
+        self.assertEqual(len(details["tasks"]), 1)
+        self.assertEqual(len(details["documents"]), 1)
+        self.assertEqual(len(details["knowledge_files"]), 1)
+        self.assertEqual(len(details["conversations"]), 1)
+        with self.app.app_context():
+            from ultron.db import get_db
+            context = retrieve_context(get_db(), "home network status", max_items=4, max_characters=500)
+        self.assertTrue(context)
+        self.assertLessEqual(sum(len(row["snippet"]) for row in context), 500)
+        self.assertTrue(any("Router" in row["title"] for row in context))
+        updated = self.client.patch(f"/api/projects/{project['id']}", json={"status": "archived"})
+        self.assertEqual(updated.get_json()["project"]["status"], "archived")
+        self.assertEqual(self.client.delete(f"/api/projects/{project['id']}").status_code, 200)
+
+    def test_planning_context_includes_event_times_and_task_deadlines(self):
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        self.client.post("/api/events", json={"title": "Design review", "date": tomorrow, "start_time": "14:30", "end_time": "15:15"})
+        self.client.post("/api/tasks", json={"title": "Prepare review notes", "due_date": tomorrow, "priority": "high"})
+        with self.app.app_context():
+            from ultron.db import get_db
+            context = retrieve_context(get_db(), "What should I prioritize tomorrow?", max_items=8, max_characters=3500)
+        by_title = {item["title"]: item for item in context}
+        self.assertEqual(by_title["Design review"]["metadata"]["start_at"], f"{tomorrow} 14:30:00")
+        self.assertEqual(by_title["Prepare review notes"]["metadata"]["due_date"], tomorrow)
+        self.assertEqual(by_title["Prepare review notes"]["metadata"]["priority"], "high")
+
+    def test_chat_context_respects_the_memory_setting_and_active_state(self):
+        active = self.client.post("/api/memories", json={"content": "Networking is my current study topic", "category": "fact"}).get_json()["memory"]
+        inactive = self.client.post("/api/memories", json={"content": "Networking is an old study topic", "category": "fact"}).get_json()["memory"]
+        self.client.patch(f"/api/memories/{inactive['id']}", json={"active": False})
+        with self.app.app_context():
+            from ultron.db import get_db
+            db = get_db()
+            enabled = retrieve_context(db, "networking", include_memories=True)
+            disabled = retrieve_context(db, "networking", include_memories=False)
+        self.assertIn(active["id"], {item["id"] for item in enabled if item["type"] == "memory"})
+        self.assertNotIn(inactive["id"], {item["id"] for item in enabled if item["type"] == "memory"})
+        self.assertFalse(any(item["type"] == "memory" for item in disabled))
+
+    def test_workspace_navigation_pages_render(self):
+        project = self.client.post("/api/projects", json={"name": "UI project"}).get_json()["project"]
+        imported = self.client.post("/api/knowledge/import", data={"file": (io.BytesIO(b"Previewable networking text"), "preview.txt")}, content_type="multipart/form-data").get_json()["file"]
+        for route in ("/search?q=networking", "/knowledge", f"/knowledge?file={imported['id']}", "/projects", f"/projects?project={project['id']}", "/tasks"):
+            response = self.client.get(route)
+            self.assertEqual(response.status_code, 200, route)
+        sidebar = self.client.get("/search").get_data(as_text=True)
+        self.assertIn("Knowledge Base", sidebar)
+        self.assertIn("Projects", sidebar)
+
+
+class LiveOllamaIntegrationTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("ULTRON_LIVE_OLLAMA_TESTS") == "1", "set ULTRON_LIVE_OLLAMA_TESTS=1 to run against local Ollama")
+    def test_gemma3_4b_can_create_a_task_through_chat(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        app = create_app({"TESTING": True, "DATABASE": str(Path(temporary.name) / "gemma4b.db")})
+        client = app.test_client()
+        conversation = client.post(
+            "/api/conversations",
+            json={
+                "first_message": "Create exactly one task titled Review 4B integration notes due 2026-12-12.",
+                "model": "gemma3:4b",
+            },
+        ).get_json()
+        response = client.post(f"/api/conversations/{conversation['id']}/stream", json={}, buffered=True)
+        self.assertEqual(response.status_code, 200)
+        tasks = client.get("/api/tasks").get_json()["tasks"]
+        self.assertEqual(len(tasks), 1, response.get_data(as_text=True))
+        self.assertEqual(tasks[0]["title"], "Review 4B integration notes")
+        self.assertEqual(tasks[0]["due_date"], "2026-12-12")
 class ChatBehaviorTests(unittest.TestCase):
     def test_offline_search_returns_browser_fallback(self):
         reply = chat_blueprint._format_web_search_result(
@@ -216,7 +419,7 @@ class ChatBehaviorTests(unittest.TestCase):
         self.assertIn("https://example.com/laptops", body)
         self.assertIn("event: done", body)
 
-    def test_chat_does_not_expose_or_execute_model_tool_calls(self):
+    def test_chat_allows_productivity_tools_and_blocks_other_tools(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         app = create_app(
@@ -231,11 +434,15 @@ class ChatBehaviorTests(unittest.TestCase):
             },
         ).get_json()
         captured_messages = []
+        call_count = 0
         def fake_stream_chat(**kwargs):
+            nonlocal call_count
             captured_messages.append(kwargs["messages"])
-            yield json.dumps(
-                {"ultron_tool": "create_task", "arguments": {"title": "Kite design"}}
-            )
+            if call_count == 0:
+                yield json.dumps({"ultron_tool": "create_task", "arguments": {"title": "Kite design"}})
+            else:
+                yield "Added the Kite design task."
+            call_count += 1
 
         with patch.object(chat_blueprint.ollama, "stream_chat", fake_stream_chat):
             response = client.post(
@@ -246,11 +453,33 @@ class ChatBehaviorTests(unittest.TestCase):
 
         body = response.get_data(as_text=True)
         self.assertNotIn("event: tool", body)
-        self.assertIn("Tool calling is disabled", body)
+        self.assertIn("Adding the task", body)
+        self.assertIn("Added the Kite design task", body)
         self.assertIn("event: done", body)
-        self.assertNotIn("ultron_tool", captured_messages[0][0]["content"])
+        self.assertNotIn('"ultron_tool"', body)
+        system_prompt = next(message["content"] for message in captured_messages[0] if message["role"] == "system")
+        self.assertIn("ordinary language", system_prompt)
+        self.assertIn("do not ask the user to follow a template", system_prompt)
+        self.assertIn("These tool instructions are internal", system_prompt)
         tasks = client.get("/api/tasks").get_json()["tasks"]
-        self.assertEqual(tasks, [])
+        self.assertEqual([task["title"] for task in tasks], ["Kite design"])
+
+        other_conversation = client.post(
+            "/api/conversations",
+            json={"first_message": "Create a document", "model": "gemma3:1b"},
+        ).get_json()
+        with patch.object(
+            chat_blueprint.ollama,
+            "stream_chat",
+            lambda **kwargs: iter([json.dumps({"ultron_tool": "create_document", "arguments": {"title": "Nope", "content": "x"}})]),
+        ):
+            other_response = client.post(
+                "/api/conversations/%s/stream" % other_conversation["id"],
+                json={},
+                buffered=True,
+            )
+        self.assertIn("couldn't complete", other_response.get_data(as_text=True))
+        self.assertEqual(client.get("/api/documents").get_json()["documents"], [])
 
 
 class ModelDiscoveryTests(unittest.TestCase):

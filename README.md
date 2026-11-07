@@ -13,26 +13,27 @@ A local-first AI workspace built for low-end computers. ultron is a lightweight 
 ## What works
 
 - **Home dashboard** — welcome state, workspace totals, recently edited documents, today's events, upcoming events, pending tasks, recent conversations, and a quick prompt that starts a real chat thread.
-- **Chat with Voice & Search** — persistent conversations, streaming Markdown/code responses, model switching, rename/delete, copy, regenerate, stop, and automatic titles.
-  - **Voice Input (Speech-to-Text)**: Click the microphone in the composer to dictate messages using the browser's Web Speech API.
-  - **Read Aloud (Text-to-Speech)**: Audio playback on assistant responses with auto-speak preference.
+- **Chat & Search** — persistent conversations, streaming Markdown/code responses, model switching, rename/delete, copy, regenerate, stop, and automatic titles.
+  - **Document editing**: Attach `.docx`, `.txt`, `.md`, and common text/code files. Ask ultron to revise them in chat and download the result in the source file type.
   - **Web Search**: Explicit search requests run directly through the Python `ddgs` metasearch package, with clickable source links. Fetch webpage content for summaries.
 - **Assistant tools** — strict application-controlled JSON tool execution loop:
   - Document read/create/edit proposals (with mandatory user approval before writing).
   - Bounded workspace file search, local file reading (`read_local_file`), and local text creation (`create_local_file`) restricted to authorized directories. Path traversal and unauthorized extensions are strictly blocked.
-  - Calendar read/create with clear date/time validation.
-  - Task read/create/update.
+  - Calendar and task read/create/update/delete, with direct user-requested changes.
   - Memory read/save with relevance-filtered context injection.
   - Web search via `ddgs` (`web_search`) and webpage text reading (`fetch_webpage`).
-- **Documents & File Management** — create, search, rename, autosave, format as Markdown or plain text, preview, and organize into folders.
+- **Documents & File Management** — create, search, rename, autosave, format as Markdown or plain text, preview, and organize into folders. Import `.docx`, `.txt`, `.md`, and common text/code files, use the writing assistant to propose edits, then accept and download in the source file type.
   - **Import**: Upload text, Markdown, JSON, CSV, or code files directly into your workspace.
   - **Export**: Export individual documents as `.md`/`.txt`, or export all documents in structured JSON.
   - **AI Writing Panel**: Streams suggestions for selected text or whole documents with one-click Accept/Reject.
-- **Calendar** — monthly, weekly, and daily views with local event creation, editing, deletion, descriptions, times, categories, and upcoming/today dashboard sections.
-- **Tasks** — add, edit, categorize, complete/reopen, and delete tasks with priority, notes, and due dates; assistant can read actual task lists for summaries.
+- **Knowledge Base** — import PDF, DOCX, TXT, and Markdown references, organize collections, preview extracted text, and search locally. PDF extraction uses `pypdf` with a `pdftotext` fallback; duplicate file contents are detected by SHA-256.
+- **Projects** — track descriptions, notes, deadlines, archive state, and task progress while linking existing tasks, documents, knowledge files, and conversations.
+- **Workspace Search & Context** — FTS5 indexes workspace titles and text when SQLite supports it, with bounded LIKE fallback. Chat retrieves a small, relevance-ranked set of local excerpts and cites the source instead of sending the full database to Ollama.
+- **Calendar** — monthly, weekly, and daily views with local event creation, editing, deletion, descriptions, times, categories, upcoming/today dashboard sections, and event reminders.
+- **Tasks** — add, edit, categorize, complete/reopen, and delete tasks with priority, notes, and due dates; assistant can manage the full task list and due reminders.
 - **Memory** — store facts/preferences, edit and delete them, and toggle their use. Only a small keyword-ranked subset relevant to the current request is included in AI context; the entire memory table is never sent.
 - **Customization & Themes** — choose between Dark Onyx, OLED Black, Light Paper, and Nord Dim themes, multiple accent colors (Violet, Emerald, Cyan, Amber, Rose, Monochrome), and typography (JetBrains Mono, Modern Sans, IBM Plex Mono).
-- **Settings, Backup & Restore** — customize operator name, default model, Ollama URL, temperature, system prompt, memory, web search, voice options, and chat shortcuts. Export full workspace JSON backups or restore previous backups with atomic SQLite rollback protection.
+- **Settings, Backup & Restore** — customize operator name, default model, Ollama URL, temperature, system prompt, memory, web search, reminder timing, and chat shortcuts. Export full workspace JSON backups or restore previous backups with atomic SQLite rollback protection.
 
 All data lives in `instance/ultron.db` and never leaves the machine. The app binds to `127.0.0.1` by default. Workspace file operations are strictly scoped to the workspace root (`ULTRON_WORKSPACE_ROOT` or project directory by default); hidden files, dependency/build directories, symlinks, and oversized files are skipped.
 
@@ -129,6 +130,9 @@ ultron/
 | --- | --- |
 | Chat | `POST /chat/new`, `GET/POST /api/conversations`, `PATCH/DELETE /api/conversations/<id>`, `POST /api/conversations/<id>/stream` (SSE) |
 | Documents | `GET/POST /api/documents`, `GET/PATCH/DELETE /api/documents/<id>`, `POST /api/documents/import`, `GET /api/documents/<id>/export`, `GET /api/documents/export-all` |
+| Search | `GET /search`, `GET /api/search?q=...&type=...` |
+| Knowledge | `GET /knowledge`, `POST /api/knowledge/import`, `GET/DELETE /api/knowledge/<id>`, collection APIs |
+| Projects | `GET /projects`, `GET/POST /api/projects`, `GET/PATCH/DELETE /api/projects/<id>`, project link APIs |
 | Calendar | `GET/POST /api/events`, `GET/PATCH/DELETE /api/events/<id>` |
 | Tasks | `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/<id>` |
 | Memory | `GET/POST /api/memories`, `PATCH/DELETE /api/memories/<id>` |

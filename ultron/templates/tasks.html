@@ -37,6 +37,10 @@
       {% for category in categories %}<option value="{{ category }}">{{ category|capitalize }}</option>{% endfor %}
     </select>
   </div>
+  <div class="task-add__field">
+    <label for="task-project">Project</label>
+    <select id="task-project"><option value="">No project</option>{% for project in projects %}<option value="{{ project.id }}">{{ project.name }}</option>{% endfor %}</select>
+  </div>
   <button class="btn btn--primary" type="submit" id="task-submit">{{ icon('plus', 15) }} Add task</button>
 </form>
 
@@ -68,6 +72,7 @@
           <span class="task-row__meta">
             <span class="task-priority task-priority--{{ task.priority }}">{{ task.priority|upper }}</span>
             <span class="task-category">{{ task.category|capitalize }}</span>
+            {% if task.project_name %}<a class="task-project-tag" href="{{ url_for('projects.index', project=task.project_id) }}">{{ task.project_name }}</a>{% endif %}
             {% if task.due_date %}
             <span class="task-due{% if task.due_date < today_value %} is-overdue{% endif %}">{{ icon('clock', 12) }} {{ task.due_date|date }}{% if task.due_date == today_value %} · today{% endif %}</span>
             {% endif %}
@@ -96,6 +101,7 @@
           <span class="task-row__meta">
             <span class="task-priority task-priority--{{ task.priority }}">{{ task.priority|upper }}</span>
             <span class="task-category">{{ task.category|capitalize }}</span>
+            {% if task.project_name %}<a class="task-project-tag" href="{{ url_for('projects.index', project=task.project_id) }}">{{ task.project_name }}</a>{% endif %}
             {% if task.due_date %}<span class="task-due">{{ icon('clock', 12) }} {{ task.due_date|date }}</span>{% endif %}
           </span>
         </div>
@@ -126,6 +132,7 @@
         <div class="field"><label for="edit-task-priority">Priority</label><select id="edit-task-priority">{% for priority in priorities %}<option value="{{ priority }}">{{ priority|capitalize }}</option>{% endfor %}</select></div>
         <div class="field"><label for="edit-task-category">Category</label><select id="edit-task-category">{% for category in categories %}<option value="{{ category }}">{{ category|capitalize }}</option>{% endfor %}</select></div>
       </div>
+      <div class="field"><label for="edit-task-project">Project</label><select id="edit-task-project"><option value="">No project</option>{% for project in projects %}<option value="{{ project.id }}">{{ project.name }}</option>{% endfor %}</select></div>
       <p class="form-error" id="task-edit-error" role="alert" hidden></p>
     </div>
     <div class="modal__foot"><span class="modal__spacer"></span><button class="btn" type="button" id="task-edit-cancel">Cancel</button><button class="btn btn--primary" type="submit" id="task-edit-save">Save task</button></div>

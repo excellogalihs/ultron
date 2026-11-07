@@ -9,6 +9,11 @@
   const emptyEl = document.getElementById("chat-empty");
   const form = document.getElementById("chat-form");
   const input = document.getElementById("chat-input");
+  const attachButton = document.getElementById("chat-attach");
+  const attachmentInput = document.getElementById("chat-attachment-file");
+  const attachmentChip = document.getElementById("chat-attachment");
+  const attachmentName = document.getElementById("chat-attachment-name");
+  const attachmentRemove = document.getElementById("chat-attachment-remove");
   const sendBtn = document.getElementById("chat-send");
   const stopBtn = document.getElementById("chat-stop");
   const modelSelect = document.getElementById("chat-model");
@@ -34,6 +39,8 @@
   let streaming = false;
   let activeController = null;
   let previousModel = modelSelect.value;
+  let pendingAttachment = null;
+  let uploadingAttachment = false;
 
   const modelLabel = () => {
     const option = modelSelect.options[modelSelect.selectedIndex];
@@ -94,6 +101,45 @@
     });
     actions.appendChild(copyButton);
 
+    if (message.dataset.documentId) {
+      const downloadButton = document.createElement("button");
+      downloadButton.type = "button";
+      downloadButton.className = "msg__action";
+      downloadButton.textContent = "Download result";
+      downloadButton.title = "Download the assistant response in the attached file's format";
+      downloadButton.addEventListener("click", async () => {
+        downloadButton.disabled = true;
+        try {
+          let content = body.dataset.rawText || body.textContent;
+          const fenced = content.match(/^```[\w.+-]*\s*\n([\s\S]*?)\n```\s*$/);
+          if (fenced) content = fenced[1];
+          const response = await fetch(`/api/documents/${message.dataset.documentId}/export`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content }),
+          });
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || `Download failed (${response.status}).`);
+          }
+          const blob = await response.blob();
+          const disposition = response.headers.get("Content-Disposition") || "";
+          const filename = disposition.match(/filename=\"?([^\";]+)\"?/i)?.[1] || "ultron-edited-file";
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = filename;
+          link.click();
+          window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (error) {
+          Ultron.toast(error.message, "error");
+        } finally {
+          downloadButton.disabled = false;
+        }
+      });
+      actions.appendChild(downloadButton);
+    }
+
     const assistantMessages = messagesEl.querySelectorAll(".msg--assistant:not(.msg--error)");
     if (message === assistantMessages[assistantMessages.length - 1] && conversationId) {
       const regenerateButton = document.createElement("button");
@@ -138,9 +184,10 @@
     if (activeMeta) activeMeta.textContent = "just now";
   };
 
-  const createMessage = (role, text) => {
+  const createMessage = (role, text, documentId = null, documentTitle = "") => {
     const wrap = document.createElement("div");
     wrap.className = `msg msg--${role}`;
+    if (documentId) wrap.dataset.documentId = documentId;
 
     const meta = document.createElement("div");
     meta.className = "msg__meta";
@@ -157,6 +204,13 @@
     body.textContent = text;
 
     meta.append(roleEl, time);
+    if (documentId && documentTitle) {
+      const attachment = document.createElement("span");
+      attachment.className = "msg__attachment";
+      attachment.textContent = `FILE · ${documentTitle}`;
+      meta.appendChild(attachment);
+      wrap.dataset.documentTitle = documentTitle;
+    }
     wrap.append(meta, body);
     messagesEl.appendChild(wrap);
     hideEmpty();
@@ -228,6 +282,9 @@
             received += event.data.token || "";
             target.textSpan.textContent = received;
             scrollBottom();
+          } else if (event.event === "status") {
+            target.textSpan.textContent = event.data.message || "Working with your workspace…";
+            scrollBottom();
           } else if (event.event === "meta") {
             applyTitle(event.data.title);
           } else if (event.event === "error") {
@@ -238,6 +295,7 @@
               received = event.data.content;
             }
             if (event.data.id) target.wrap.dataset.messageId = event.data.id;
+            if (event.data.document_id) target.wrap.dataset.documentId = event.data.document_id;
             target.cursor.remove();
             target.wrap.classList.remove("is-streaming");
             renderAssistant(target.wrap, received);
@@ -270,10 +328,11 @@
     scrollBottom(true);
   };
 
-  const startStream = async (content = null) => {
+  const startStream = async (content = null, documentId = null) => {
     if (streaming || !conversationId) return;
     errorBanner.hidden = true;
     const target = createStreamingMessage();
+    if (documentId) target.wrap.dataset.documentId = documentId;
     activeController = new AbortController();
     setStreaming(true);
 
@@ -285,7 +344,7 @@
           "Content-Type": "application/json",
           Accept: "text/event-stream",
         },
-        body: JSON.stringify(content ? { content } : {}),
+        body: JSON.stringify(content ? { content, document_id: documentId } : {}),
       });
 
       if (!response.ok) {
@@ -330,9 +389,11 @@
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (streaming) return;
+    if (streaming || uploadingAttachment) return;
 
-    const content = input.value.trim();
+    const content = input.value.trim() || (pendingAttachment
+      ? "Please improve the writing and clarity of this document. Return the complete revised file content."
+      : "");
     if (!content) {
       input.focus();
       return;
@@ -343,7 +404,7 @@
       try {
         const created = await Ultron.api("/api/conversations", {
           method: "POST",
-          body: { first_message: content, model: modelSelect.value },
+          body: { first_message: content, model: modelSelect.value, document_id: pendingAttachment?.id || null },
         });
         window.location.href = `/chat/${created.id}?autosend=1`;
       } catch (error) {
@@ -355,8 +416,49 @@
 
     input.value = "";
     autoResize();
-    createMessage("user", content);
-    await startStream(content);
+    const documentId = pendingAttachment?.id || null;
+    createMessage("user", content, documentId, pendingAttachment ? `${pendingAttachment.title}${pendingAttachment.fileType}` : "");
+    pendingAttachment = null;
+    attachmentChip.hidden = true;
+    attachmentInput.value = "";
+    await startStream(content, documentId);
+  });
+
+  attachButton?.addEventListener("click", () => attachmentInput.click());
+  attachmentRemove?.addEventListener("click", () => {
+    pendingAttachment = null;
+    attachmentChip.hidden = true;
+    attachmentInput.value = "";
+  });
+  attachmentInput?.addEventListener("change", async () => {
+    const file = attachmentInput.files[0];
+    if (!file) return;
+    uploadingAttachment = true;
+    attachButton.disabled = true;
+    sendBtn.disabled = true;
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("context", "chat");
+      const result = await Ultron.api("/api/documents/import", { method: "POST", body });
+      pendingAttachment = {
+        id: result.document.id,
+        title: result.document.title,
+        fileType: result.document.file_type,
+      };
+      attachmentName.textContent = `${result.document.title}${result.document.file_type}`;
+      attachmentChip.hidden = false;
+      Ultron.toast(result.document.file_type === ".docx"
+        ? "Word text added. Layout is simplified for editing. Ask ultron what to change."
+        : "File added. Ask ultron what to change.");
+    } catch (error) {
+      Ultron.toast(error.message, "error");
+      attachmentInput.value = "";
+    } finally {
+      attachButton.disabled = false;
+      sendBtn.disabled = streaming;
+      uploadingAttachment = false;
+    }
   });
 
   input.addEventListener("keydown", (event) => {
@@ -493,6 +595,14 @@
   });
 
   updateModelDisplay();
+  messagesEl.querySelectorAll(".msg--user[data-document-title]").forEach((message) => {
+    const meta = message.querySelector(".msg__meta");
+    if (!meta || meta.querySelector(".msg__attachment")) return;
+    const attachment = document.createElement("span");
+    attachment.className = "msg__attachment";
+    attachment.textContent = `FILE · ${message.dataset.documentTitle}`;
+    meta.appendChild(attachment);
+  });
   messagesEl.querySelectorAll(".msg--assistant:not(.msg--error)").forEach((message) => {
     const body = message.querySelector(".msg__body");
     const raw = body.textContent;
@@ -537,126 +647,5 @@
       webChip.setAttribute("aria-pressed", webSearchActive ? "true" : "false");
     });
   }
-
-  // Voice Input (Speech-to-Text)
-  const micBtn = document.getElementById("chat-mic");
-  let recognition = null;
-  let isListening = false;
-
-  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-  if (micBtn && SpeechRec) {
-    recognition = new SpeechRec();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = navigator.language || "en-US";
-
-    let priorValue = "";
-
-    recognition.onstart = () => {
-      isListening = true;
-      micBtn.classList.add("is-listening");
-      micBtn.title = "Listening… click to stop";
-      priorValue = input.value;
-    };
-
-    recognition.onresult = (event) => {
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        interim += event.results[i][0].transcript;
-      }
-      input.value = (priorValue ? priorValue + " " : "") + interim;
-      autoResize();
-    };
-
-    recognition.onerror = (event) => {
-      console.warn("Speech recognition error:", event.error);
-      isListening = false;
-      micBtn.classList.remove("is-listening");
-      micBtn.title = "Voice input (Speech to text)";
-    };
-
-    recognition.onend = () => {
-      isListening = false;
-      micBtn.classList.remove("is-listening");
-      micBtn.title = "Voice input (Speech to text)";
-    };
-
-    micBtn.addEventListener("click", () => {
-      if (isListening) {
-        recognition.stop();
-      } else {
-        try {
-          recognition.start();
-        } catch (e) {
-          console.warn("Could not start speech recognition:", e);
-        }
-      }
-    });
-  } else if (micBtn) {
-    micBtn.addEventListener("click", () => {
-      Ultron.toast("Speech recognition is not supported in this browser.", "error");
-    });
-  }
-
-  // Text-to-Speech (TTS)
-  const autoSpeak = (app.dataset.autoSpeak === "1");
-
-  const speakText = (text, button) => {
-    if (!window.speechSynthesis) return;
-
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-      document.querySelectorAll(".msg__speak.is-speaking").forEach(b => b.classList.remove("is-speaking"));
-      if (button && button.dataset.speaking === "true") {
-        button.dataset.speaking = "false";
-        return;
-      }
-    }
-
-    // Strip basic markdown/urls for cleaner speech
-    const clean = text
-      .replace(/```[\s\S]*?```/g, " code block omitted ")
-      .replace(/`([^`]+)`/g, "$1")
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-      .replace(/[*_#>-]/g, " ")
-      .trim();
-
-    if (!clean) return;
-
-    const utter = new SpeechSynthesisUtterance(clean);
-    utter.rate = 1.0;
-    utter.pitch = 1.0;
-
-    if (button) {
-      button.classList.add("is-speaking");
-      button.dataset.speaking = "true";
-      utter.onend = () => {
-        button.classList.remove("is-speaking");
-        button.dataset.speaking = "false";
-      };
-      utter.onerror = () => {
-        button.classList.remove("is-speaking");
-        button.dataset.speaking = "false";
-      };
-    }
-
-    window.speechSynthesis.speak(utter);
-  };
-
-  const bindSpeakButtons = () => {
-    document.querySelectorAll(".msg__speak").forEach((button) => {
-      if (button.dataset.bound) return;
-      button.dataset.bound = "true";
-      button.addEventListener("click", () => {
-        const msgBody = button.closest(".msg")?.querySelector(".msg__body");
-        if (msgBody) {
-          speakText(msgBody.textContent, button);
-        }
-      });
-    });
-  };
-
-  bindSpeakButtons();
 
 })();

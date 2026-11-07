@@ -9,6 +9,7 @@
   const dueInput = document.getElementById("task-due");
   const priorityInput = document.getElementById("task-priority");
   const categoryInput = document.getElementById("task-category");
+  const projectInput = document.getElementById("task-project");
   const submit = document.getElementById("task-submit");
   const submitLabel = submit.innerHTML;
   const editDialog = document.getElementById("task-edit-dialog");
@@ -19,6 +20,7 @@
   const editDue = document.getElementById("edit-task-due");
   const editPriority = document.getElementById("edit-task-priority");
   const editCategory = document.getElementById("edit-task-category");
+  const editProject = document.getElementById("edit-task-project");
   const editError = document.getElementById("task-edit-error");
   const editSave = document.getElementById("task-edit-save");
 
@@ -31,6 +33,7 @@
       editDue.value = task.due_date || "";
       editPriority.value = task.priority;
       editCategory.value = task.category || "general";
+      editProject.value = task.project_id || "";
       editError.hidden = true;
       Ultron.openDialog(editDialog);
       editTitle.focus();
@@ -58,6 +61,7 @@
           due_date: dueInput.value,
           priority: priorityInput.value,
           category: categoryInput.value,
+          project_id: projectInput.value ? Number(projectInput.value) : null,
         },
       });
       window.location.href = "/tasks?view=pending";
@@ -81,6 +85,7 @@
           due_date: editDue.value,
           priority: editPriority.value,
           category: editCategory.value,
+          project_id: editProject.value ? Number(editProject.value) : null,
         },
       });
       window.location.reload();
@@ -136,4 +141,7 @@
       }
     });
   }
+
+  const requestedTask = new URLSearchParams(window.location.search).get("task");
+  if (requestedTask && /^\d+$/.test(requestedTask)) openEdit(Number(requestedTask));
 })();

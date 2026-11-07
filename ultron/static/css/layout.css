@@ -263,6 +263,25 @@
   flex: none;
 }
 
+.notification-center { position: relative; }
+.notification-toggle { position: relative; color: var(--text-muted); }
+.notification-toggle:hover { color: var(--accent-bright); background: var(--accent-soft); }
+.notification-count {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #08070f;
+  font-size: 7px;
+  line-height: 14px;
+  text-align: center;
+}
+.notification-count[hidden] { display: none; }
+
 .topbar__date {
   font-size: 8.5px;
   letter-spacing: 0.14em;

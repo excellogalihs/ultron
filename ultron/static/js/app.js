@@ -184,11 +184,128 @@ const Ultron = (() => {
       });
   }
 
+  function initNotifications() {
+    const center = document.getElementById("notification-center");
+    const toggle = document.getElementById("notification-toggle");
+    const panel = document.getElementById("notification-panel");
+    const count = document.getElementById("notification-count");
+    const list = document.getElementById("notification-list");
+    const readAll = document.getElementById("notification-read-all");
+    const desktop = document.getElementById("notification-desktop");
+    if (!center || !toggle || !panel || !list) return;
+
+    let loading = false;
+    const updateCount = (unread) => {
+      count.textContent = unread > 99 ? "99+" : String(unread);
+      count.hidden = unread < 1;
+      toggle.setAttribute("aria-label", unread ? `Notifications, ${unread} unread` : "Notifications");
+    };
+
+    const render = (notifications) => {
+      list.replaceChildren();
+      if (!notifications.length) {
+        const empty = document.createElement("p");
+        empty.className = "notification-empty";
+        empty.textContent = "No reminders yet.";
+        list.appendChild(empty);
+        return;
+      }
+      notifications.forEach((item) => {
+        const link = document.createElement("a");
+        link.className = `notification-item${item.read_at ? "" : " is-unread"}`;
+        link.href = item.href;
+        const title = document.createElement("strong");
+        title.textContent = item.title;
+        const message = document.createElement("span");
+        message.textContent = item.message;
+        const meta = document.createElement("small");
+        meta.textContent = `${item.source_type === "task" ? "TASK" : "CALENDAR"} · ${item.due_at}`;
+        link.append(title, message, meta);
+        link.addEventListener("click", async (event) => {
+          event.preventDefault();
+          try {
+            await api(`/api/notifications/${item.id}/read`, { method: "POST" });
+          } finally {
+            window.location.assign(link.href);
+          }
+        });
+        list.appendChild(link);
+      });
+    };
+
+    const refresh = async (notify = true) => {
+      if (loading) return;
+      loading = true;
+      try {
+        const result = await api("/api/notifications");
+        render(result.notifications || []);
+        updateCount(result.unread || 0);
+        if (notify) {
+          (result.new || []).forEach((item) => {
+            toast(`${item.title}: ${item.message}`, "success");
+            if (window.Notification && Notification.permission === "granted" && localStorage.getItem("ultron-desktop-notifications") === "1") {
+              new Notification(item.title, { body: item.message, tag: `ultron-${item.id}` });
+            }
+          });
+        }
+      } catch {
+        /* Reminders stay local; retry on the next poll if this request fails. */
+      } finally {
+        loading = false;
+      }
+    };
+
+    toggle.addEventListener("click", () => {
+      const opening = panel.hidden;
+      panel.hidden = !opening;
+      toggle.setAttribute("aria-expanded", String(opening));
+      if (opening) refresh(false);
+    });
+    document.addEventListener("click", (event) => {
+      if (!center.contains(event.target)) {
+        panel.hidden = true;
+        toggle.setAttribute("aria-expanded", "false");
+      }
+    });
+    readAll.addEventListener("click", async () => {
+      try {
+        await api("/api/notifications/read-all", { method: "POST" });
+        await refresh(false);
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    });
+    if (!window.Notification) {
+      desktop.hidden = true;
+    } else {
+      desktop.addEventListener("click", async () => {
+        if (Notification.permission === "granted") {
+          localStorage.setItem("ultron-desktop-notifications", "1");
+          toast("Desktop notifications enabled.");
+          return;
+        }
+        const permission = await Notification.requestPermission();
+        if (permission === "granted") {
+          localStorage.setItem("ultron-desktop-notifications", "1");
+          toast("Desktop notifications enabled.");
+        } else {
+          toast("Desktop notification permission was not granted.", "error");
+        }
+      });
+      if (Notification.permission === "granted" && localStorage.getItem("ultron-desktop-notifications") === "1") {
+        desktop.textContent = "Desktop notifications enabled";
+      }
+    }
+    refresh();
+    window.setInterval(() => refresh(), 60000);
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     initSidebar();
     initDialogBehavior();
     initFlash();
     initEngineStatus();
+    initNotifications();
   });
 
   return { api, toast, openDialog, closeDialog, setSidebar };

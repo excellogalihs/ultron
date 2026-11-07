@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS messages (
     conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
     content TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS documents (
     content TEXT NOT NULL DEFAULT '',
     folder_id INTEGER REFERENCES document_folders(id) ON DELETE SET NULL,
     format TEXT NOT NULL DEFAULT 'markdown' CHECK (format IN ('markdown', 'text')),
+    file_type TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -64,12 +66,84 @@ CREATE TABLE IF NOT EXISTS tasks (
     priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high')),
     category TEXT NOT NULL DEFAULT 'general',
     due_date TEXT,
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
     completed_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status
     ON tasks (status, due_date);
+
+CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    description TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    deadline TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_status ON projects (status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS project_documents (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (project_id, document_id)
+);
+
+CREATE TABLE IF NOT EXISTS project_conversations (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (project_id, conversation_id)
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_collections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    collection_id INTEGER REFERENCES knowledge_collections(id) ON DELETE SET NULL,
+    filename TEXT NOT NULL,
+    title TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    content_hash TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'indexed' CHECK (status IN ('indexed', 'error')),
+    imported_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_collection ON knowledge_files (collection_id, imported_at DESC);
+
+CREATE TABLE IF NOT EXISTS project_knowledge_files (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    knowledge_file_id INTEGER NOT NULL REFERENCES knowledge_files(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (project_id, knowledge_file_id)
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_type TEXT NOT NULL CHECK (source_type IN ('task', 'event')),
+    source_id INTEGER NOT NULL,
+    schedule_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    due_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    read_at TEXT,
+    UNIQUE (source_type, source_id, schedule_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_created
+    ON notifications (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS memories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

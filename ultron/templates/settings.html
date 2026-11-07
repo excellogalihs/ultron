@@ -76,8 +76,8 @@
       <div class="settings-section__head">
         <span class="settings-section__icon">{{ icon('globe', 16) }}</span>
         <div>
-          <h2>Search &amp; voice</h2>
-          <p>Online capabilities and speech input/output.</p>
+          <h2>Search &amp; reminders</h2>
+          <p>Online search and local workspace notifications.</p>
         </div>
       </div>
       <label class="switch-row" for="web_search_enabled">
@@ -87,20 +87,19 @@
         </span>
         <input class="switch-input" type="checkbox" id="web_search_enabled" name="web_search_enabled" value="1"{% if settings.web_search_enabled == '1' %} checked{% endif %}>
       </label>
-      <label class="switch-row" for="voice_enabled">
-        <span class="switch-row__copy">
-          <span class="switch-row__title">Voice input (Speech-to-text)</span>
-          <span class="switch-row__desc">Enables the microphone button in chat using the browser Web Speech API.</span>
-        </span>
-        <input class="switch-input" type="checkbox" id="voice_enabled" name="voice_enabled" value="1"{% if settings.voice_enabled == '1' %} checked{% endif %}>
-      </label>
-      <label class="switch-row" for="voice_auto_speak">
-        <span class="switch-row__copy">
-          <span class="switch-row__title">Auto-speak assistant replies</span>
-          <span class="switch-row__desc">Automatically read responses aloud using text-to-speech when speech finishes.</span>
-        </span>
-        <input class="switch-input" type="checkbox" id="voice_auto_speak" name="voice_auto_speak" value="1"{% if settings.voice_auto_speak == '1' %} checked{% endif %}>
-      </label>
+      <div class="field" style="margin-top: 12px;">
+        <label for="task_reminder_time">Task reminders</label>
+        <input type="time" id="task_reminder_time" name="task_reminder_time" value="{{ settings.task_reminder_time or '09:00' }}">
+        <span class="label-optional">Notify on the due date at this local time.</span>
+      </div>
+      <div class="field" style="margin-top: 12px;">
+        <label for="event_reminder_minutes">Calendar reminders</label>
+        <select id="event_reminder_minutes" name="event_reminder_minutes">
+          {% for minutes in [0, 5, 10, 15, 30, 60] %}
+          <option value="{{ minutes }}"{% if settings.event_reminder_minutes|int == minutes %} selected{% endif %}>{{ 'At event time' if minutes == 0 else minutes ~ ' minutes before' }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="field" style="margin-top: 12px;">
         <label for="chat_send_key">Chat send shortcut</label>
         <select id="chat_send_key" name="chat_send_key">
