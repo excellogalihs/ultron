@@ -1,0 +1,37 @@
+{% from "components/icons.html" import icon %}
+<aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+  <a class="brand" href="{{ url_for('home.index') }}" aria-label="ultron home">
+    <span class="brand__mark">{% from "components/logo.html" import mark %}{{ mark(28) }}</span>
+    <span class="brand__text">
+      <span class="brand__name">ULTRON</span>
+      <span class="brand__sub">LOCAL WORKSPACE</span>
+    </span>
+  </a>
+
+  <div class="sidebar__label">WORKSPACE</div>
+  <nav class="nav">
+    {% for item in nav_items %}
+    <a class="nav__item{% if item.active %} is-active{% endif %}" href="{{ item.href }}"{% if item.active %} aria-current="page"{% endif %}>
+      <span class="nav__icon">{{ icon(item.icon, 17) }}</span>
+      <span class="nav__label">{{ item.label }}</span>
+      <span class="nav__index">{{ "%02d"|format(loop.index) }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  <div class="sidebar__bottom">
+    <a class="engine" href="{{ url_for('settings.index') }}" id="engine-card" title="Engine settings">
+      <span class="engine__top">
+        <span class="label">LOCAL ENGINE</span>
+        <span class="status-dot status-dot--idle" id="engine-dot"></span>
+      </span>
+      <span class="engine__model" id="engine-model">{{ settings.default_model }}</span>
+      <span class="engine__state" id="engine-state">Checking Ollama…</span>
+    </a>
+    <div class="sidebar__meta">
+      <span>v{{ app_version }}</span>
+      <span>LOCAL-FIRST</span>
+    </div>
+  </div>
+</aside>
+<div class="sidebar-scrim" id="sidebar-scrim" hidden></div>

@@ -1,0 +1,9 @@
+{% from "components/icons.html" import icon %}
+
+{% macro empty_state(icon_name, title, text, compact=false) -%}
+<div class="empty{% if compact %} empty--compact{% endif %}">
+  <span class="empty__icon">{{ icon(icon_name, 19) }}</span>
+  <p class="empty__title">{{ title }}</p>
+  <p class="empty__text">{{ text }}</p>
+</div>
+{%- endmacro %}

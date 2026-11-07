@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="label label--muted">SYSTEM / CONFIGURATION</span>
+    <h1 class="page-head__title">Settings<span class="accent">.</span></h1>
+    <p class="page-head__desc">Configure the local engine, context, and stored data.</p>
+  </div>
+  <div class="page-head__actions">
+    <span class="count-badge">v{{ app_version }}</span>
+  </div>
+</div>
+
+<form class="settings-form" id="settings-form" method="post" action="{{ url_for('settings.save') }}">
+  <div class="settings-grid">
+    <section class="panel settings-section">
+      <div class="settings-section__head">
+        <span class="settings-section__icon">{{ icon('settings', 16) }}</span>
+        <div>
+          <h2>Profile</h2>
+          <p>How this workspace addresses you.</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="operator_name">Display name</label>
+        <input type="text" id="operator_name" name="operator_name" value="{{ settings.operator_name }}" maxlength="80" required autocomplete="off">
+      </div>
+      <div class="profile-meta">
+        <div class="profile-meta__row"><span>NODE</span><span>LOCAL ONLY</span></div>
+        <div class="profile-meta__row"><span>STORAGE</span><span>SQLITE</span></div>
+        <div class="profile-meta__row"><span>VERSION</span><span>v{{ app_version }}</span></div>
+      </div>
+    </section>
+
+    <section class="panel settings-section">
+      <div class="settings-section__head">
+        <span class="settings-section__icon">{{ icon('cpu', 16) }}</span>
+        <div>
+          <h2>AI engine</h2>
+          <p>Ollama runs the model locally.</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="default_model">Default model</label>
+        <select id="default_model" name="default_model">
+          {% for model in models %}
+          <option value="{{ model.id }}"{% if settings.default_model == model.id %} selected{% endif %}>{{ model.label }} — {{ model.note }}{% if not model.installed %} · unavailable{% endif %}</option>
+          {% endfor %}
+        </select>
+        <span class="field__hint">Used for new conversations. Existing threads keep their own model.</span>
+      </div>
+      <div class="field">
+        <label for="ollama_url">Ollama URL</label>
+        <input type="url" id="ollama_url" name="ollama_url" value="{{ settings.ollama_url }}" placeholder="http://localhost:11434" required autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="temperature">Temperature <output id="temperature-output">{{ settings.temperature }}</output></label>
+        <input type="range" id="temperature" name="temperature" min="0" max="2" step="0.1" value="{{ settings.temperature }}">
+        <span class="field__hint">Lower is more deterministic; higher is more varied.</span>
+      </div>
+      <div class="engine-check">
+        <button class="btn btn--small" type="button" id="test-connection">{{ icon('cpu', 14) }} Test connection</button>
+        <span class="engine-check__state" id="connection-state">Not checked.</span>
+      </div>
+      <div class="engine-models" id="connection-models" hidden></div>
+    </section>
+
+    <section class="panel settings-section settings-section--wide">
+      <div class="settings-section__head">
+        <span class="settings-section__icon">{{ icon('spark', 16) }}</span>
+        <div>
+          <h2>Context &amp; behavior</h2>
+          <p>Shape how the assistant responds and what it remembers.</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="system_prompt">System prompt</label>
+        <textarea id="system_prompt" name="system_prompt" rows="6" maxlength="4000">{{ settings.system_prompt }}</textarea>
+        <span class="field__hint">Sent at the start of every chat request. Memory notes are appended when enabled.</span>
+      </div>
+      <label class="switch-row" for="use_memory">
+        <span class="switch-row__copy">
+          <span class="switch-row__title">Use memory as chat context</span>
+          <span class="switch-row__desc">Append active memory entries to the system prompt. No memory is sent when disabled.</span>
+        </span>
+        <input class="switch-input" type="checkbox" id="use_memory" name="use_memory" value="1"{% if settings.use_memory == '1' %} checked{% endif %}>
+      </label>
+    </section>
+
+    <section class="panel settings-section settings-section--wide">
+      <div class="settings-section__head">
+        <span class="settings-section__icon">{{ icon('memory', 16) }}</span>
+        <div>
+          <h2>Local data</h2>
+          <p>Everything lives in one SQLite file on this machine.</p>
+        </div>
+        <a class="btn btn--small settings-section__action" href="{{ url_for('settings.export_data') }}">{{ icon('download', 14) }} Export JSON</a>
+      </div>
+      <div class="data-grid">
+        <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.documents) }}</span><span class="data-stat__label">DOCUMENTS</span></div>
+        <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.events) }}</span><span class="data-stat__label">EVENTS</span></div>
+        <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.tasks) }}</span><span class="data-stat__label">TASKS</span></div>
+        <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.memories) }}</span><span class="data-stat__label">MEMORIES</span></div>
+        <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.conversations) }}</span><span class="data-stat__label">THREADS</span></div>
+        <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.messages) }}</span><span class="data-stat__label">MESSAGES</span></div>
+      </div>
+      <div class="data-path">
+        <span class="label label--muted">DATABASE</span>
+        <code>{{ database_path }}</code>
+        <span class="data-path__size">{{ database_size }}</span>
+      </div>
+    </section>
+  </div>
+
+  <div class="settings-save">
+    <span class="settings-save__note">{{ icon('cpu', 13) }} Changes are stored locally in SQLite.</span>
+    <button class="btn btn--primary" type="submit" id="settings-submit">Save settings</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/settings.js') }}" defer></script>
+{% endblock %}

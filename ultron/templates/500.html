@@ -1,0 +1,13 @@
+{% from "components/icons.html" import icon %}
+{% from "components/logo.html" import mark %}
+{% extends "base.html" %}
+
+{% block content %}
+<section class="error-page">
+  <div class="error-page__mark">{{ mark(54) }}</div>
+  <span class="label">ERROR / 500</span>
+  <h1>The local server hit a fault<span class="accent">.</span></h1>
+  <p>Check the terminal running ultron for details. Your data remains in the local SQLite database.</p>
+  <a class="btn" href="{{ url_for('home.index') }}">{{ icon('arrow-left', 15) }} Return home</a>
+</section>
+{% endblock %}

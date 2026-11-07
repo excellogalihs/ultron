@@ -1,0 +1,265 @@
+/* ============================================================
+   ultron — design tokens, fonts, reset, base typography
+   ============================================================ */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jb-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jb-medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jb-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+
+  --bg: #07070b;
+  --bg-soft: #09090f;
+  --bg-deep: #050508;
+  --panel: #0d0d14;
+  --panel-2: #11111a;
+  --panel-3: #151520;
+  --line: #20202c;
+  --line-strong: #2d2d3d;
+
+  --text: #ececf4;
+  --text-dim: #a2a2b5;
+  --text-muted: #6b6b81;
+  --text-faint: #4c4c60;
+
+  --accent: #8c7cf0;
+  --accent-bright: #aa9cff;
+  --accent-dim: #6d5fc9;
+  --accent-soft: rgba(140, 124, 240, 0.09);
+  --accent-line: rgba(140, 124, 240, 0.36);
+
+  --ok: #64c99c;
+  --danger: #e06a7d;
+  --warn: #d7af6d;
+
+  --font: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --radius: 4px;
+  --radius-sm: 3px;
+  --sidebar-width: 236px;
+  --topbar-height: 60px;
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.015);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+img,
+svg {
+  display: block;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0;
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--font);
+}
+
+::selection {
+  background: var(--accent);
+  color: #08050f;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+  background-clip: content-box;
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.icon {
+  flex: none;
+}
+
+.accent {
+  color: var(--accent);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 12px;
+  z-index: 200;
+  background: var(--accent);
+  color: #08050f;
+  padding: 9px 14px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.skip-link:focus {
+  top: 12px;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.label--muted {
+  color: var(--text-muted);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-muted);
+}
+.status-dot--online {
+  background: var(--ok);
+}
+.status-dot--idle {
+  background: var(--warn);
+}
+.status-dot--offline {
+  background: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

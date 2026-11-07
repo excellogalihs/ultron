@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import empty_state %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="label label--muted">WORKSPACE / EXECUTION</span>
+    <h1 class="page-head__title">Tasks<span class="accent">.</span></h1>
+    <p class="page-head__desc">Small, concrete actions. Everything is stored on this machine.</p>
+  </div>
+  <div class="page-head__actions">
+    <span class="count-badge">{{ counts.pending }} OPEN</span>
+  </div>
+</div>
+
+<form class="panel task-add" id="task-form" autocomplete="off">
+  <div class="task-add__title">
+    <label class="sr-only" for="task-title">Task title</label>
+    <input type="text" id="task-title" placeholder="Add a task…" maxlength="300" required>
+  </div>
+  <div class="task-add__field">
+    <label for="task-due">Due</label>
+    <input type="date" id="task-due">
+  </div>
+  <div class="task-add__field">
+    <label for="task-priority">Priority</label>
+    <select id="task-priority">
+      <option value="normal">Normal</option>
+      <option value="high">High</option>
+      <option value="low">Low</option>
+    </select>
+  </div>
+  <div class="task-add__field">
+    <label for="task-category">Category</label>
+    <select id="task-category">
+      {% for category in categories %}<option value="{{ category }}">{{ category|capitalize }}</option>{% endfor %}
+    </select>
+  </div>
+  <button class="btn btn--primary" type="submit" id="task-submit">{{ icon('plus', 15) }} Add task</button>
+</form>
+
+<div class="filter-tabs" role="tablist" aria-label="Task filter">
+  {% for key, label in [('all', 'All'), ('pending', 'Pending'), ('completed', 'Completed')] %}
+  <a class="filter-tab{% if view == key %} is-active{% endif %}" href="{{ url_for('tasks.index', view=key) }}" role="tab" aria-selected="{{ 'true' if view == key else 'false' }}">
+    {{ label }}<span class="filter-tab__count">{{ "%02d"|format(counts[key]) }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="task-groups" id="tasks-app" data-view="{{ view }}">
+  {% set pending = tasks|selectattr('status', 'equalto', 'pending')|list %}
+  {% set completed = tasks|selectattr('status', 'equalto', 'completed')|list %}
+
+  {% if pending %}
+  <section class="panel task-group">
+    <div class="task-group__head">
+      <span class="label">PENDING</span>
+      <span class="task-group__count">{{ "%02d"|format(pending|length) }}</span>
+    </div>
+    <ul class="task-list">
+      {% for task in pending %}
+      <li class="task-row" data-task-id="{{ task.id }}">
+        <button class="task-toggle" type="button" data-task-toggle data-status="pending" aria-label="Mark task complete">{{ icon('check', 14) }}</button>
+        <div class="task-row__main">
+          <span class="task-row__title">{{ task.title }}</span>
+          {% if task.notes %}<span class="task-row__notes">{{ task.notes }}</span>{% endif %}
+          <span class="task-row__meta">
+            <span class="task-priority task-priority--{{ task.priority }}">{{ task.priority|upper }}</span>
+            <span class="task-category">{{ task.category|capitalize }}</span>
+            {% if task.due_date %}
+            <span class="task-due{% if task.due_date < today_value %} is-overdue{% endif %}">{{ icon('clock', 12) }} {{ task.due_date|date }}{% if task.due_date == today_value %} · today{% endif %}</span>
+            {% endif %}
+          </span>
+        </div>
+        <button class="icon-btn task-row__edit" type="button" data-task-edit aria-label="Edit task">{{ icon('edit', 14) }}</button>
+        <button class="icon-btn icon-btn--danger task-row__delete" type="button" data-task-delete aria-label="Delete task">{{ icon('trash', 15) }}</button>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if completed %}
+  <section class="panel task-group task-group--completed">
+    <div class="task-group__head">
+      <span class="label">COMPLETED</span>
+      <span class="task-group__count">{{ "%02d"|format(completed|length) }}</span>
+    </div>
+    <ul class="task-list">
+      {% for task in completed %}
+      <li class="task-row is-complete" data-task-id="{{ task.id }}">
+        <button class="task-toggle is-checked" type="button" data-task-toggle data-status="completed" aria-label="Mark task pending" aria-pressed="true">{{ icon('check', 14) }}</button>
+        <div class="task-row__main">
+          <span class="task-row__title">{{ task.title }}</span>
+          <span class="task-row__meta">
+            <span class="task-priority task-priority--{{ task.priority }}">{{ task.priority|upper }}</span>
+            <span class="task-category">{{ task.category|capitalize }}</span>
+            {% if task.due_date %}<span class="task-due">{{ icon('clock', 12) }} {{ task.due_date|date }}</span>{% endif %}
+          </span>
+        </div>
+        <button class="icon-btn task-row__edit" type="button" data-task-edit aria-label="Edit task">{{ icon('edit', 14) }}</button>
+        <button class="icon-btn icon-btn--danger task-row__delete" type="button" data-task-delete aria-label="Delete task">{{ icon('trash', 15) }}</button>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if not tasks %}
+  <div class="panel">
+    {{ empty_state('tasks', 'No tasks in this view', 'Add a task above, then work through it one step at a time.') }}
+  </div>
+  {% endif %}
+</div>
+
+<dialog class="modal" id="task-edit-dialog" aria-labelledby="task-edit-title">
+  <form id="task-edit-form">
+    <div class="modal__head"><div><span class="label label--muted">TASK DETAILS</span><h2 id="task-edit-title">Edit task</h2></div><button class="icon-btn" type="button" id="task-edit-close" aria-label="Close">{{ icon('close', 16) }}</button></div>
+    <div class="modal__body">
+      <input type="hidden" id="edit-task-id">
+      <div class="field"><label for="edit-task-title">Task</label><input id="edit-task-title" type="text" maxlength="300" required></div>
+      <div class="field"><label for="edit-task-notes">Notes</label><textarea id="edit-task-notes" rows="3" maxlength="4000"></textarea></div>
+      <div class="form-grid form-grid--three">
+        <div class="field"><label for="edit-task-due">Due date</label><input id="edit-task-due" type="date"></div>
+        <div class="field"><label for="edit-task-priority">Priority</label><select id="edit-task-priority">{% for priority in priorities %}<option value="{{ priority }}">{{ priority|capitalize }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="edit-task-category">Category</label><select id="edit-task-category">{% for category in categories %}<option value="{{ category }}">{{ category|capitalize }}</option>{% endfor %}</select></div>
+      </div>
+      <p class="form-error" id="task-edit-error" role="alert" hidden></p>
+    </div>
+    <div class="modal__foot"><span class="modal__spacer"></span><button class="btn" type="button" id="task-edit-cancel">Cancel</button><button class="btn btn--primary" type="submit" id="task-edit-save">Save task</button></div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tasks.js') }}" defer></script>
+{% endblock %}

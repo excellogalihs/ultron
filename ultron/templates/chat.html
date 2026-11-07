@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/logo.html" import mark %}
+
+{% block content %}
+{% set current_model = conversation.model if conversation else settings.default_model %}
+<div class="chat-shell" id="chat-app"
+     data-conversation-id="{{ conversation.id if conversation else '' }}"
+     data-conversation-title="{{ conversation.title if conversation else '' }}"
+     data-default-model="{{ current_model }}">
+  <aside class="chat-rail" id="chat-rail" aria-label="Conversations">
+    <div class="chat-rail__head">
+      <span class="label">THREADS</span>
+      <div class="chat-rail__actions">
+        <button class="icon-btn chat-rail__close" type="button" id="chat-rail-close" aria-label="Close conversation list">{{ icon('close', 16) }}</button>
+        <button class="btn btn--icon" type="button" id="new-conversation" title="New conversation" aria-label="New conversation">{{ icon('plus', 16) }}</button>
+      </div>
+    </div>
+    <div class="chat-rail__list">
+      {% for item in conversations %}
+      <a class="thread{% if conversation and item.id == conversation.id %} is-active{% endif %}" href="{{ url_for('chat.conversation', conversation_id=item.id) }}">
+        <span class="thread__title">{{ item.title }}</span>
+        <span class="thread__meta"><span>{{ item.model }}</span><span>{{ item.updated_at|humanize }}</span></span>
+      </a>
+      {% else %}
+      <div class="chat-rail__empty">No conversations yet.<br>Start a thread on the right.</div>
+      {% endfor %}
+    </div>
+    <div class="chat-rail__foot">{{ "%02d"|format(conversations|length) }} THREADS · LOCAL</div>
+  </aside>
+
+  <section class="chat-panel">
+    <header class="chat-head">
+      <button class="icon-btn chat-head__history" type="button" id="chat-rail-toggle" aria-label="Open conversations">{{ icon('history', 17) }}</button>
+      <div class="chat-head__title">
+        <h1 id="chat-title">{{ conversation.title if conversation else 'New conversation' }}</h1>
+        <span class="chat-head__sub" id="chat-subtitle">{{ current_model }} · local inference</span>
+      </div>
+      <div class="chat-head__actions">
+        <label class="sr-only" for="chat-model">Conversation model</label>
+        <select class="select select--compact" id="chat-model">
+          {% for model in supported_models %}
+          <option value="{{ model.id }}"{% if current_model == model.id %} selected{% endif %}>{{ model.label }}{% if not model.installed %} · unavailable{% endif %}</option>
+          {% endfor %}
+        </select>
+        <span class="chat-engine-status is-checking" id="chat-connection-state" role="status">Checking engine</span>
+        <button class="icon-btn" type="button" id="rename-conversation" title="Rename conversation" aria-label="Rename conversation"{% if not conversation %} hidden{% endif %}>{{ icon('edit', 15) }}</button>
+        <button class="icon-btn icon-btn--danger" type="button" id="delete-conversation" title="Delete conversation" aria-label="Delete conversation"{% if not conversation %} hidden{% endif %}>{{ icon('trash', 16) }}</button>
+      </div>
+    </header>
+
+    <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-label="Conversation messages">
+      <div class="chat-empty" id="chat-empty"{% if messages %} hidden{% endif %}>
+        <div class="chat-empty__mark">{{ mark(46) }}</div>
+        <h2>ultron is ready<span class="accent">.</span></h2>
+        <p>Ask a question, work through an idea, or paste something you want to understand. Inference runs locally with {{ current_model }}.</p>
+        <div class="prompt-starters">
+          <button type="button" data-prompt="Summarize the key points of this text: ">{{ icon('spark', 14) }} Summarize a long text</button>
+          <button type="button" data-prompt="Draft a short, clear plan for: ">{{ icon('tasks', 14) }} Draft a plan</button>
+          <button type="button" data-prompt="Explain this in plain language: ">{{ icon('chat', 14) }} Explain a concept</button>
+        </div>
+      </div>
+
+      {% for message in messages %}
+      <div class="msg msg--{{ message.role }}" data-message-id="{{ message.id }}">
+        <div class="msg__meta">
+          <span class="msg__role">{{ 'YOU' if message.role == 'user' else 'ULTRON' }}</span>
+          <time datetime="{{ message.created_at }}">{{ message.created_at|humanize }}</time>
+        </div>
+        <div class="msg__body">{{ message.content }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="chat-error" id="chat-error" role="alert" hidden></div>
+
+    <form class="composer" id="chat-form" autocomplete="off">
+      <div class="composer__field">
+        <label class="sr-only" for="chat-input">Message ultron</label>
+        <textarea id="chat-input" rows="1" placeholder="Message ultron…" maxlength="20000"></textarea>
+        <button class="icon-btn composer__stop" type="button" id="chat-stop" title="Stop generation" aria-label="Stop generation" hidden>{{ icon('close', 16) }}</button>
+        <button class="composer__send" type="submit" id="chat-send" title="Send message" aria-label="Send message">{{ icon('send', 18) }}</button>
+      </div>
+      <div class="composer__meta">
+        <span>Enter to send · Shift+Enter for newline</span>
+        <span id="composer-model">{{ current_model }}</span>
+      </div>
+    </form>
+  </section>
+</div>
+<div class="chat-rail-scrim" id="chat-rail-scrim" hidden></div>
+<dialog class="chat-rename-dialog" id="rename-dialog" aria-labelledby="rename-dialog-title">
+  <form id="rename-form">
+    <div class="chat-rename-dialog__head">
+      <h2 id="rename-dialog-title">Rename conversation</h2>
+      <button class="icon-btn" type="button" id="rename-close" aria-label="Close rename dialog">{{ icon('close', 15) }}</button>
+    </div>
+    <div class="field">
+      <label for="rename-input">Conversation name</label>
+      <input id="rename-input" type="text" maxlength="90" required autocomplete="off">
+    </div>
+    <div class="chat-rename-dialog__actions">
+      <button class="btn btn--small" type="button" id="rename-cancel">Cancel</button>
+      <button class="btn btn--primary btn--small" type="submit" id="rename-save">Save name</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/markdown.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/chat.js') }}" defer></script>
+{% endblock %}

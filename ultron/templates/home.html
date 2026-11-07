@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import empty_state %}
+
+{% block content %}
+<section class="welcome">
+  <div class="welcome__meta">
+    <span class="label"><span class="status-dot status-dot--online"></span> LOCAL NODE</span>
+    <span class="welcome__sep">/</span>
+    <span class="label label--muted">{{ now.strftime('%A %d %B').upper() }}</span>
+  </div>
+  <div class="welcome__row">
+    <div class="welcome__copy">
+      <h1>{{ greeting }}, {{ settings.operator_name }}<span class="accent">.</span></h1>
+      <p>Your workspace is running locally. Pick up where you left off, or start with a question.</p>
+    </div>
+    <div class="welcome__metrics" aria-label="Workspace totals">
+      <div class="metric"><span class="metric__value">{{ "%02d"|format(stats.documents) }}</span><span class="metric__label">DOCS</span></div>
+      <div class="metric"><span class="metric__value">{{ "%02d"|format(stats.pending_tasks) }}</span><span class="metric__label">OPEN</span></div>
+      <div class="metric"><span class="metric__value">{{ "%02d"|format(stats.memories) }}</span><span class="metric__label">MEMORY</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel quick-prompt">
+  <div class="panel__head">
+    <div class="panel__title">{{ icon('spark', 16) }}<span>Quick prompt</span></div>
+    <span class="model-badge">{{ model }}</span>
+  </div>
+  <form class="prompt-form" id="quick-prompt-form" action="{{ url_for('chat.new_from_form') }}" method="post">
+    <label class="sr-only" for="quick-prompt">Ask ultron a question</label>
+    <textarea id="quick-prompt" name="first_message" rows="2" placeholder="Ask ultron anything, or sketch what you want to work on…" required></textarea>
+    <input type="hidden" name="model" value="{{ model }}">
+    <div class="prompt-form__foot">
+      <span class="prompt-form__hint">{{ icon('cpu', 14) }} Local inference · nothing leaves this machine</span>
+      <button class="btn btn--primary" type="submit">
+        <span>Send prompt</span>{{ icon('send', 15) }}
+      </button>
+    </div>
+  </form>
+</section>
+
+<div class="dash-grid">
+  <section class="panel dash-card">
+    <div class="panel__head">
+      <div class="panel__title">{{ icon('doc', 16) }}<span>Recent documents</span><span class="panel__count">{{ "%02d"|format(stats.documents) }}</span></div>
+      <a class="text-link" href="{{ url_for('documents.index') }}">View all {{ icon('arrow-right', 13) }}</a>
+    </div>
+    {% if recent_documents %}
+    <ul class="row-list">
+      {% for doc in recent_documents %}
+      <li>
+        <a class="row" href="{{ url_for('documents.index') }}?doc={{ doc.id }}">
+          <span class="row__main">
+            <span class="row__title">{{ doc.title }}</span>
+            <span class="row__meta">{{ doc.updated_at|humanize }} · {{ doc.content|wordcount }} words</span>
+          </span>
+          {{ icon('arrow-right', 14, 'row__arrow') }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="dash-empty">
+      {{ empty_state('doc', 'No documents yet', 'Create a note, plan, or reference page. It stays in your local database.', true) }}
+      <a class="btn btn--small" href="{{ url_for('documents.index') }}?new=1">{{ icon('plus', 13) }} New document</a>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel dash-card">
+    <div class="panel__head">
+      <div class="panel__title">{{ icon('calendar', 16) }}<span>Today</span></div>
+      <a class="text-link" href="{{ url_for('calendar.index', view='day', date=today_value) }}">Daily schedule {{ icon('arrow-right', 13) }}</a>
+    </div>
+    {% if today_events %}
+    <ul class="row-list">
+      {% for event in today_events %}
+      <li>
+        <a class="row row--event" href="{{ url_for('calendar.index', view='day', date=today_value) }}?event={{ event.id }}">
+          <span class="date-chip"><span class="date-chip__day">{{ event.start_at|time }}</span><span class="date-chip__month">{{ event.category|upper }}</span></span>
+          <span class="row__main">
+            <span class="row__title">{{ event.title }}</span>
+            <span class="row__meta">{{ event.start_at|time }}{% if event.end_at %}–{{ event.end_at|time }}{% endif %}{% if event.description %} · {{ event.description }}{% endif %}</span>
+          </span>
+          {{ icon('arrow-right', 14, 'row__arrow') }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="dash-empty">
+      {{ empty_state('calendar', 'Nothing scheduled today', 'Your day is clear. Add an event when one comes up.', true) }}
+      <a class="btn btn--small" href="{{ url_for('calendar.index', view='day', date=today_value) }}">{{ icon('plus', 13) }} Add event</a>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel dash-card">
+    <div class="panel__head">
+      <div class="panel__title">{{ icon('calendar', 16) }}<span>Upcoming</span></div>
+      <a class="text-link" href="{{ url_for('calendar.index') }}">Calendar {{ icon('arrow-right', 13) }}</a>
+    </div>
+    {% if upcoming_events %}
+    <ul class="row-list">
+      {% for event in upcoming_events %}
+      {% set md = event.start_at|month_day %}
+      <li>
+        <a class="row row--event" href="{{ url_for('calendar.index') }}?month={{ event.start_at[:7] }}&event={{ event.id }}">
+          <span class="date-chip"><span class="date-chip__day">{{ md.day }}</span><span class="date-chip__month">{{ md.month }}</span></span>
+          <span class="row__main">
+            <span class="row__title">{{ event.title }}</span>
+            <span class="row__meta">{{ event.start_at|time }}{% if event.end_at %}–{{ event.end_at|time }}{% endif %} · {{ event.start_at|date }}</span>
+          </span>
+          {{ icon('arrow-right', 14, 'row__arrow') }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="dash-empty">
+      {{ empty_state('calendar', 'Nothing scheduled', 'Your calendar is clear. Add an event when you need one.', true) }}
+      <a class="btn btn--small" href="{{ url_for('calendar.index') }}">{{ icon('plus', 13) }} Add event</a>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel dash-card">
+    <div class="panel__head">
+      <div class="panel__title">{{ icon('tasks', 16) }}<span>Pending tasks</span><span class="panel__count">{{ "%02d"|format(stats.pending_tasks) }}</span></div>
+      <a class="text-link" href="{{ url_for('tasks.index') }}">View all {{ icon('arrow-right', 13) }}</a>
+    </div>
+    {% if pending_tasks %}
+    <ul class="row-list">
+      {% for task in pending_tasks %}
+      <li>
+        <a class="row row--task" href="{{ url_for('tasks.index', view='pending') }}">
+          <span class="task-dot task-dot--{{ task.priority }}"></span>
+          <span class="row__main">
+            <span class="row__title">{{ task.title }}</span>
+            <span class="row__meta">
+              {{ task.priority|capitalize }} priority{% if task.due_date %} · due {{ task.due_date|date }}{% endif %}
+            </span>
+          </span>
+          {% if task.due_date and task.due_date < today_value %}<span class="tag tag--danger">OVERDUE</span>{% endif %}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="dash-empty">
+      {{ empty_state('tasks', 'No pending tasks', 'Everything is clear. Add a task when something needs doing.', true) }}
+      <a class="btn btn--small" href="{{ url_for('tasks.index') }}">{{ icon('plus', 13) }} Add task</a>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel dash-card">
+    <div class="panel__head">
+      <div class="panel__title">{{ icon('chat', 16) }}<span>Recent chats</span><span class="panel__count">{{ "%02d"|format(stats.conversations) }}</span></div>
+      <a class="text-link" href="{{ url_for('chat.index') }}">Open chat {{ icon('arrow-right', 13) }}</a>
+    </div>
+    {% if recent_conversations %}
+    <ul class="row-list">
+      {% for convo in recent_conversations %}
+      <li>
+        <a class="row" href="{{ url_for('chat.conversation', conversation_id=convo.id) }}">
+          <span class="row__main">
+            <span class="row__title">{{ convo.title }}</span>
+            <span class="row__meta">{{ convo.model }} · {{ convo.updated_at|humanize }}</span>
+          </span>
+          {{ icon('arrow-right', 14, 'row__arrow') }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="dash-empty">
+      {{ empty_state('chat', 'No conversations yet', 'Ask a question with the quick prompt above to start a thread.', true) }}
+      <a class="btn btn--small" href="{{ url_for('chat.index') }}">{{ icon('chat', 13) }} Open chat</a>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/home.js') }}" defer></script>
+{% endblock %}

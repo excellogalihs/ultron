@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import empty_state %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="label label--muted">WORKSPACE / KNOWLEDGE</span>
+    <h1 class="page-head__title">Documents<span class="accent">.</span></h1>
+    <p class="page-head__desc">Notes, references, and drafts stored in your local database.</p>
+  </div>
+  <div class="page-head__actions">
+    <span class="count-badge">{{ documents|length }} {{ 'DOCUMENT' if documents|length == 1 else 'DOCUMENTS' }}</span>
+    <button class="btn btn--primary" type="button" id="new-document-btn">{{ icon('plus', 15) }} New document</button>
+  </div>
+</div>
+
+<div class="doc-layout" id="documents-app" data-selected="{{ selected_id or '' }}" data-new="{{ '1' if new_document else '0' }}" data-folder="{{ selected_folder if selected_folder else '' }}">
+  <aside class="panel doc-sidebar">
+    <div class="doc-sidebar__top">
+      <div class="input-wrap input-wrap--search">
+        {{ icon('search', 15) }}
+        <input type="search" id="doc-search" placeholder="Search documents" autocomplete="off" aria-label="Search documents">
+      </div>
+      <label class="sr-only" for="doc-folder-filter">Filter by folder</label>
+      <select class="select" id="doc-folder-filter">
+        <option value="">All folders</option>
+        <option value="none">Unfiled</option>
+        {% for folder in folders %}
+        <option value="{{ folder.id }}"{% if selected_folder == folder.id %} selected{% endif %}>{{ folder.name }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn--small" type="button" id="new-folder-btn">{{ icon('plus', 13) }} New folder</button>
+      <button class="btn btn--primary btn--block" type="button" id="new-document-btn-rail">{{ icon('plus', 14) }} New</button>
+    </div>
+    <div class="doc-list" id="doc-list" role="list">
+      {% for doc in documents %}
+      <a class="doc-item{% if selected_id == doc.id %} is-active{% endif %}" href="{{ url_for('documents.index') }}?doc={{ doc.id }}" data-doc-id="{{ doc.id }}" role="listitem">
+        <span class="doc-item__title">{{ doc.title }}</span>
+        <span class="doc-item__meta">{{ doc.updated_at|humanize }} · {{ doc.format|upper }}</span>
+      </a>
+      {% endfor %}
+      <div class="doc-list__none" id="doc-filter-empty"{% if documents %} hidden{% endif %}>No documents match.</div>
+    </div>
+    {% if not documents %}
+    <div class="doc-sidebar__empty">
+      {{ empty_state('doc', 'Empty library', 'Create your first document with the button above.', true) }}
+    </div>
+    {% endif %}
+    <div class="doc-sidebar__foot">{{ "%02d"|format(documents|length) }} IN LOCAL STORE</div>
+  </aside>
+
+  <section class="panel doc-editor">
+    <div class="editor-empty" id="editor-empty">
+      <div class="editor-empty__mark">{{ icon('doc', 26) }}</div>
+      <h2>Select a document</h2>
+      <p>Choose a document, or create one to begin writing.</p>
+      <button class="btn" type="button" id="empty-new-document">{{ icon('plus', 14) }} New document</button>
+    </div>
+
+    <form class="editor-form" id="editor-form" hidden>
+      <div class="editor-head">
+        <input class="editor-title" type="text" id="doc-title" placeholder="Untitled document" maxlength="200" aria-label="Document title">
+        <div class="editor-head__actions">
+          <label class="sr-only" for="doc-folder">Document folder</label>
+          <select class="select select--compact" id="doc-folder" aria-label="Document folder">
+            <option value="">Unfiled</option>
+            {% for folder in folders %}<option value="{{ folder.id }}">{{ folder.name }}</option>{% endfor %}
+          </select>
+          <button class="icon-btn icon-btn--danger" type="button" id="doc-delete" title="Delete document" aria-label="Delete document">{{ icon('trash', 16) }}</button>
+          <button class="btn btn--primary" type="submit" id="doc-save">Save</button>
+        </div>
+      </div>
+      <div class="editor-meta">
+        <span id="doc-status">New document</span>
+        <div class="editor-meta__right">
+          <label class="sr-only" for="doc-format">Document format</label>
+          <select class="select select--compact" id="doc-format">
+            <option value="markdown">Markdown</option>
+            <option value="text">Plain text</option>
+          </select>
+          <div class="segmented" role="group" aria-label="Document display mode">
+            <button type="button" class="is-active" data-doc-mode="edit" aria-pressed="true">Edit</button>
+            <button type="button" data-doc-mode="preview" aria-pressed="false">Preview</button>
+          </div>
+          <span id="doc-count">0 words</span>
+        </div>
+      </div>
+      <div class="editor-surface">
+        <textarea class="editor-body" id="doc-content" placeholder="Start writing…" spellcheck="true"></textarea>
+        <article class="editor-preview" id="doc-preview" hidden></article>
+      </div>
+      <div class="editor-foot">
+        <span>{{ icon('cpu', 13) }} Autosaved locally</span>
+        <span id="doc-updated"></span>
+      </div>
+    </form>
+  </section>
+
+  <aside class="panel doc-assistant" id="doc-assistant" hidden>
+    <div class="doc-assistant__head">
+      <div><span class="label label--muted">LOCAL MODEL</span><h2>AI writing assistant</h2></div>
+      <span class="doc-assistant__model">{{ settings.default_model }}</span>
+    </div>
+    <div class="field">
+      <label for="doc-ai-action">Action</label>
+      <select id="doc-ai-action">
+        <option value="improve">Improve writing</option>
+        <option value="rewrite">Rewrite selected text</option>
+        <option value="grammar">Fix grammar</option>
+        <option value="summarize">Summarize document</option>
+        <option value="expand">Expand content</option>
+        <option value="tone">Change writing tone</option>
+        <option value="explain">Explain difficult paragraph</option>
+        <option value="ideas">Generate ideas</option>
+        <option value="continue">Continue writing</option>
+        <option value="ask">Ask about document</option>
+        <option value="custom">Custom instruction</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="doc-ai-instruction">Instruction <span class="label-optional">optional</span></label>
+      <textarea id="doc-ai-instruction" rows="3" maxlength="2000" placeholder="Add details, tone, or a question…"></textarea>
+    </div>
+    <button class="btn btn--primary btn--block" id="doc-ai-run" type="button">{{ icon('spark', 14) }} Generate suggestion</button>
+    <button class="btn btn--block doc-ai-stop" id="doc-ai-stop" type="button" hidden>Stop suggestion</button>
+    <p class="doc-ai-selection" id="doc-ai-selection">Select text in the editor to target a specific passage.</p>
+    <p class="doc-ai-status" id="doc-ai-status" role="status" aria-live="polite"></p>
+    <section class="doc-suggestion" id="doc-suggestion" hidden>
+      <div class="doc-suggestion__head"><span class="label">SUGGESTION PREVIEW</span></div>
+      <div class="doc-suggestion__body" id="doc-suggestion-body"></div>
+      <div class="doc-suggestion__actions">
+        <button class="btn btn--small" id="doc-ai-reject" type="button">Reject</button>
+        <button class="btn btn--primary btn--small" id="doc-ai-accept" type="button">Accept</button>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<dialog class="modal" id="folder-dialog" aria-labelledby="folder-dialog-title">
+  <form id="folder-form">
+    <div class="modal__head"><div><span class="label label--muted">DOCUMENT LIBRARY</span><h2 id="folder-dialog-title">New folder</h2></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">{{ icon('close', 16) }}</button></div>
+    <div class="modal__body"><div class="field"><label for="folder-name">Folder name</label><input id="folder-name" type="text" maxlength="80" required autocomplete="off"></div><p class="form-error" id="folder-error" role="alert" hidden></p></div>
+    <div class="modal__foot"><span class="modal__spacer"></span><button class="btn" type="button" data-dialog-close>Cancel</button><button class="btn btn--primary" type="submit">Create folder</button></div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/markdown.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/documents.js') }}" defer></script>
+{% endblock %}

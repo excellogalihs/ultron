@@ -1,0 +1,16 @@
+{% from "components/icons.html" import icon %}
+<header class="topbar">
+  <button class="icon-btn topbar__menu" id="sidebar-toggle" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+    {{ icon('menu', 19) }}
+  </button>
+  <div class="topbar__crumb">
+    <span class="topbar__brand">ULTRON</span>
+    <span class="topbar__slash">/</span>
+    <span class="topbar__page">{{ page_title|upper }}</span>
+  </div>
+  <div class="topbar__right">
+    <span class="topbar__date">{{ today_label }}</span>
+    <span class="topbar__local"><span class="status-dot status-dot--online"></span>LOCAL</span>
+    <a class="avatar" href="{{ url_for('settings.index') }}" title="Profile & settings">{{ settings.operator_name|initials }}</a>
+  </div>
+</header>

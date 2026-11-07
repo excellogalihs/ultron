@@ -1,0 +1,56 @@
+{% from "components/icons.html" import icon %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07070b">
+  <meta name="description" content="ultron — a local-first AI workspace for low-end machines.">
+  <title>{% block title %}{{ page_title }} · ULTRON{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body data-page="{{ page }}"{% if conversation is defined and conversation %} data-conversation-id="{{ conversation.id }}"{% endif %}>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  {% include "components/sidebar.html" %}
+
+  <div class="app">
+    {% include "components/topbar.html" %}
+    <main class="main" id="main" tabindex="-1">
+      {% with flashed = get_flashed_messages(with_categories=true) %}
+        {% if flashed %}
+        <div class="flashes" role="status" aria-live="polite">
+          {% for category, message in flashed %}
+          <div class="flash flash--{{ category }}">
+            <span class="flash__icon">{{ icon('alert' if category == 'error' else 'check', 16) }}</span>
+            <span class="flash__text">{{ message }}</span>
+            <button class="flash__close" type="button" aria-label="Dismiss">{{ icon('close', 14) }}</button>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      {% endwith %}
+
+      <noscript>
+        <div class="flash flash--error noscript-note">
+          <span class="flash__icon">{{ icon('alert', 16) }}</span>
+          <span class="flash__text">JavaScript is required for chat, editing, and task actions. Enable it to use ultron.</span>
+        </div>
+      </noscript>
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/selects.js') }}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

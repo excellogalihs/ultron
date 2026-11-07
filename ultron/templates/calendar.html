@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="label label--muted">WORKSPACE / SCHEDULE</span>
+    <h1 class="page-head__title">Calendar<span class="accent">.</span></h1>
+    <p class="page-head__desc">A local view of your month. Click any day to add an event.</p>
+  </div>
+  <div class="page-head__actions">
+    <button class="btn btn--primary" type="button" id="new-event-btn">{{ icon('plus', 15) }} New event</button>
+  </div>
+</div>
+
+<div class="calendar-panel panel" id="calendar-app" data-open-event="{{ open_event_id or '' }}" data-today="{{ today_value }}" data-month="{{ month_value }}" data-view="{{ view }}" data-selected-date="{{ selected_date.isoformat() }}">
+  <div class="calendar-bar">
+    <div class="calendar-bar__left">
+      <a class="btn btn--icon" href="{{ url_for('calendar.index') }}{{ previous_href }}" aria-label="Previous {{ view }}">{{ icon('arrow-left', 16) }}</a>
+      <a class="btn btn--icon" href="{{ url_for('calendar.index') }}{{ next_href }}" aria-label="Next {{ view }}">{{ icon('arrow-right', 16) }}</a>
+      <a class="btn btn--small" href="{{ url_for('calendar.index') }}{{ today_href }}">Today</a>
+      <h2 class="calendar-title">{{ month_label }}</h2>
+    </div>
+    <div class="calendar-bar__right">
+      <nav class="segmented" aria-label="Calendar view">
+        <a class="{% if view == 'month' %}is-active{% endif %}" href="{{ url_for('calendar.index', view='month', month=month_value) }}"{% if view == 'month' %} aria-current="page"{% endif %}>Month</a>
+        <a class="{% if view == 'week' %}is-active{% endif %}" href="{{ url_for('calendar.index', view='week', date=selected_date.isoformat()) }}"{% if view == 'week' %} aria-current="page"{% endif %}>Week</a>
+        <a class="{% if view == 'day' %}is-active{% endif %}" href="{{ url_for('calendar.index', view='day', date=selected_date.isoformat()) }}"{% if view == 'day' %} aria-current="page"{% endif %}>Day</a>
+      </nav>
+      <span class="calendar-legend"><span class="calendar-legend__mark"></span> Today</span>
+    </div>
+  </div>
+
+  {% if view == 'month' %}
+  <div class="weekday-row" aria-hidden="true">
+    {% for label in ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] %}
+    <span>{{ label }}</span>
+    {% endfor %}
+  </div>
+
+  <div class="calendar-scroll">
+    <div class="calendar-grid">
+      {% for week in weeks %}
+        {% for day in week %}
+        <div class="cal-day{% if not day.in_month %} is-outside{% endif %}{% if day.is_today %} is-today{% endif %}" data-date="{{ day.key }}" role="gridcell">
+          <div class="cal-day__head">
+            <span class="cal-day__num">{{ day.date.day }}</span>
+            {% if day.is_today %}<span class="cal-day__today">TODAY</span>{% endif %}
+          </div>
+          <div class="cal-events">
+            {% for event in day.events[:3] %}
+            <button class="cal-event cal-event--{{ event.category }}" type="button" data-event-id="{{ event.id }}" title="{{ event.title }} · {{ event.start_at|time }}">
+              <span class="cal-event__time">{{ event.start_at|time }}</span>
+              <span class="cal-event__title">{{ event.title }}</span>
+            </button>
+            {% endfor %}
+            {% if day.events|length > 3 %}
+            <span class="cal-more">+{{ day.events|length - 3 }} more</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+  {% elif view == 'week' %}
+  <div class="calendar-week-grid">
+    {% for day in weeks[0] %}
+    <section class="calendar-week-day{% if day.is_today %} is-today{% endif %}" data-date="{{ day.key }}">
+      <button class="calendar-week-day__head" type="button" data-calendar-add-date="{{ day.key }}">
+        <span>{{ day.date.strftime('%a').upper() }}</span><strong>{{ day.date.day }}</strong>
+      </button>
+      <div class="calendar-week-day__events">
+        {% for event in day.events %}
+        <button class="cal-event cal-event--{{ event.category }}" type="button" data-event-id="{{ event.id }}" title="{{ event.title }} · {{ event.description }}">
+          <span class="cal-event__time">{{ event.start_at|time }}</span><span class="cal-event__title">{{ event.title }}</span>
+        </button>
+        {% else %}<span class="calendar-no-events">Clear</span>{% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  {% else %}
+  <section class="calendar-day-view" data-date="{{ weeks[0][0].key }}">
+    <div class="calendar-day-view__head"><span class="label label--muted">{{ selected_date.strftime('%A').upper() }}</span><span>{{ selected_date.strftime('%d %B %Y') }}</span></div>
+    <div class="calendar-day-schedule">
+      {% for event in weeks[0][0].events %}
+      <button class="schedule-event cal-event--{{ event.category }}" type="button" data-event-id="{{ event.id }}">
+        <span class="schedule-event__time">{{ event.start_at|time }}{% if event.end_at %}–{{ event.end_at|time }}{% endif %}</span>
+        <span class="schedule-event__main"><strong>{{ event.title }}</strong><span>{{ event.category|capitalize }}{% if event.description %} · {{ event.description }}{% endif %}</span></span>
+        {{ icon('edit', 14) }}
+      </button>
+      {% else %}<div class="calendar-day-empty">No events scheduled for this day.</div>{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+
+<dialog class="modal" id="event-dialog" aria-labelledby="event-dialog-title">
+  <form id="event-form" novalidate>
+    <div class="modal__head">
+      <div>
+        <span class="label label--muted">CALENDAR EVENT</span>
+        <h2 id="event-dialog-title">New event</h2>
+      </div>
+      <button class="icon-btn" type="button" data-dialog-close aria-label="Close">{{ icon('close', 17) }}</button>
+    </div>
+    <div class="modal__body">
+      <input type="hidden" id="event-id">
+      <div class="field">
+        <label for="event-title">Title</label>
+        <input type="text" id="event-title" maxlength="200" placeholder="What is happening?" required autocomplete="off">
+      </div>
+      <div class="form-grid form-grid--three">
+        <div class="field">
+          <label for="event-date">Date</label>
+          <input type="date" id="event-date" required>
+        </div>
+        <div class="field">
+          <label for="event-start">Start</label>
+          <input type="time" id="event-start" value="09:00" required>
+        </div>
+        <div class="field">
+          <label for="event-end">End</label>
+          <input type="time" id="event-end" value="10:00">
+        </div>
+      </div>
+      <div class="field">
+        <label for="event-description">Description <span class="label-optional">optional</span></label>
+        <textarea id="event-description" rows="3" maxlength="2000" placeholder="Details, links, context…"></textarea>
+      </div>
+      <div class="field">
+        <label for="event-category">Category</label>
+        <select id="event-category">
+          {% for category in event_categories %}<option value="{{ category }}">{{ category|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+      <p class="form-error" id="event-error" role="alert" hidden></p>
+    </div>
+    <div class="modal__foot">
+      <button class="btn btn--danger" type="button" id="event-delete" hidden>{{ icon('trash', 14) }} Delete</button>
+      <span class="modal__spacer"></span>
+      <button class="btn" type="button" data-dialog-close>Cancel</button>
+      <button class="btn btn--primary" type="submit" id="event-save">Save event</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/calendar.js') }}" defer></script>
+{% endblock %}
