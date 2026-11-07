@@ -114,11 +114,3 @@ Run the local assistant/tool tests with:
 ```bash
 PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -v
 ```
-
-## Scope
-
-This is a deliberate foundation, not a finished productivity suite. There is no authentication, multi-user support, file upload/search, reminders, or autonomous tool use. Calendar events are single-day; task notes exist in storage but are not edited in the UI yet. Data export is read-only. Those are future layers, not hidden mock features.
-
-## License
-
-Application code: MIT. JetBrains Mono is licensed under the SIL Open Font License 1.1.
