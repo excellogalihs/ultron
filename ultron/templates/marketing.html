@@ -1,9 +1,10 @@
+{% from "components/logo.html" import mark %}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f0eee8">
+  <meta name="theme-color" content="#07070b">
   <meta name="description" content="ultron is your local-first AI workspace. Chat, write, plan, and keep your data on your own machine.">
   <title>ultron — your own kind of intelligence</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
@@ -11,7 +12,7 @@
 </head>
 <body>
   <header class="top" id="top">
-    <a class="wordmark" href="#top" aria-label="ultron home"><span class="wordmark__icon">u</span> ultron<span class="wordmark__period">.</span></a>
+    <a class="wordmark" href="#top" aria-label="ultron home">{{ mark(32, 'wordmark__mark') }} <span>ULTRON</span></a>
     <nav class="top__nav" aria-label="Main navigation">
       <a href="#features">Features</a><a href="#local">Why local?</a>
     </nav>
@@ -39,7 +40,7 @@
         <div class="app-window">
           <div class="app-window__bar"><span class="window-dots"><i></i><i></i><i></i></span><span>ULTRON / HOME</span><span class="window-status"><b></b> LOCAL NODE</span></div>
           <div class="app-window__body">
-            <div class="mini-sidebar"><div class="mini-mark">u</div><span class="mini-active">⌂</span><span>◉</span><span>▤</span><span>▦</span><span>☷</span></div>
+            <div class="mini-sidebar"><div class="mini-mark">{{ mark(18) }}</div><span class="mini-active">⌂</span><span>◉</span><span>▤</span><span>▦</span><span>☷</span></div>
             <div class="mini-content">
               <div class="mini-kicker">MONDAY / 09:41</div>
               <div class="mini-title">Good morning,<br><strong>operator.</strong></div>
@@ -69,10 +70,10 @@
       </div>
     </section>
 
-    <section class="local-band"><div class="local-band__glyph">u<span>.</span></div><div><div class="eyebrow">YOUR MACHINE, YOUR CALL</div><h2>Private by nature.<br><em>Light on its feet.</em></h2></div><div class="local-band__copy"><p>Built with Flask, SQLite, and Ollama. No heavyweight desktop stack and no cloud account to set up. Your workspace data stays on your machine.</p><a href="https://github.com/excellogalihs/ultron" target="_blank" rel="noopener noreferrer">See how it works <span>↗</span></a></div></section>
+    <section class="local-band"><div class="local-band__glyph">{{ mark(104) }}</div><div><div class="eyebrow">YOUR MACHINE, YOUR CALL</div><h2>Private by nature.<br><em>Light on its feet.</em></h2></div><div class="local-band__copy"><p>Built with Flask, SQLite, and Ollama. No heavyweight desktop stack and no cloud account to set up. Your workspace data stays on your machine.</p><a href="https://github.com/excellogalihs/ultron" target="_blank" rel="noopener noreferrer">See how it works <span>↗</span></a></div></section>
 
     <section class="closing"><div class="eyebrow">READY WHEN YOU ARE</div><h2>Your next good idea<br>could start <em>right here.</em></h2><a class="button button--dark" href="{{ url_for('home.index') }}">Open ultron <span>↗</span></a><div class="closing-orbit"></div></section>
   </main>
-  <footer><a class="wordmark" href="#top"><span class="wordmark__icon">u</span> ultron<span class="wordmark__period">.</span></a><span>YOUR SPACE. YOUR RULES.</span><a href="https://github.com/excellogalihs/ultron" target="_blank" rel="noopener noreferrer">VIEW ON GITHUB ↗</a><span>© ULTRON</span></footer>
+  <footer><a class="wordmark" href="#top">{{ mark(28, 'wordmark__mark') }} <span>ULTRON</span></a><span>YOUR SPACE. YOUR RULES.</span><a href="https://github.com/excellogalihs/ultron" target="_blank" rel="noopener noreferrer">VIEW ON GITHUB ↗</a><span>© ULTRON</span></footer>
 </body>
 </html>
