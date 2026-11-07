@@ -117,6 +117,22 @@ class WorkspaceToolTests(unittest.TestCase):
             '{"ultron_tool":"create_task","arguments":{"title":"safe"}}'
         )
         self.assertEqual(call[0], "create_task")
+        self.assertEqual(
+            parse_tool_call(
+                '{"ultrontool":"searchworkspace"} '
+                '{"query":"gaming laptop specs"} '
+                '{"ultrontool":"searchworkspace"} '
+                '{"query":"gaming laptop price"}'
+            ),
+            (
+                "search_workspace",
+                {"query": "gaming laptop specs; gaming laptop price"},
+            ),
+        )
+        self.assertEqual(
+            parse_tool_call('{"ultron_tool":"search_web"}', fallback_query="local weather"),
+            ("web_search", {"query": "local weather"}),
+        )
         self.assertIsNone(
             parse_tool_call('{"ultron_tool":"run_shell","arguments":{"command":"id"}}')
         )
@@ -153,18 +169,60 @@ class WorkspaceToolTests(unittest.TestCase):
         self.assertIn("Python", memories[0]["content"])
 
 
-class ChatToolLoopTests(unittest.TestCase):
-    def test_stream_executes_tool_and_persists_followup(self):
+class ChatBehaviorTests(unittest.TestCase):
+    def test_offline_search_returns_browser_fallback(self):
+        reply = chat_blueprint._format_web_search_result(
+            "gaming laptop specs",
+            {"error": "Internet connection is unavailable.", "offline": True},
+        )
+        self.assertIn("Open this search in your browser", reply)
+        self.assertIn("https://duckduckgo.com/?q=gaming+laptop+specs", reply)
+
+    def test_explicit_web_search_bypasses_model_tool_formatting(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        app = create_app(
+            {
+                "TESTING": True,
+                "DATABASE": str(Path(temporary.name) / "search.db"),
+                "ULTRON_WORKSPACE_ROOT": None,
+            }
+        )
+        client = app.test_client()
+        conversation = client.post(
+            "/api/conversations",
+            json={"first_message": "Can you search online for gaming laptop specs and price?"},
+        ).get_json()
+        search_results = {
+            "source": "web_search",
+            "query": "gaming laptop specs and price",
+            "results": [{
+                "title": "Laptop guide",
+                "url": "https://example.com/laptops",
+                "snippet": "Compare specifications and prices.",
+            }],
+            "count": 1,
+        }
+        with patch.object(chat_blueprint.web_search, "search", return_value=search_results) as search:
+            with patch.object(chat_blueprint.ollama, "stream_chat", side_effect=AssertionError):
+                response = client.post(
+                    f"/api/conversations/{conversation['id']}/stream",
+                    json={},
+                    buffered=True,
+                )
+        body = response.get_data(as_text=True)
+        search.assert_called_once_with("gaming laptop specs and price", max_results=5)
+        self.assertIn("Laptop guide", body)
+        self.assertIn("https://example.com/laptops", body)
+        self.assertIn("event: done", body)
+
+    def test_chat_does_not_expose_or_execute_model_tool_calls(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         app = create_app(
             {"TESTING": True, "DATABASE": str(Path(temporary.name) / "chat.db")}
         )
         client = app.test_client()
-        client.post(
-            "/api/memories",
-            json={"content": "I enjoy kite design", "category": "preference"},
-        )
         conversation = client.post(
             "/api/conversations",
             json={
@@ -173,20 +231,11 @@ class ChatToolLoopTests(unittest.TestCase):
             },
         ).get_json()
         captured_messages = []
-        stream_count = [0]
-
         def fake_stream_chat(**kwargs):
             captured_messages.append(kwargs["messages"])
-            stream_count[0] += 1
-            if stream_count[0] == 1:
-                yield json.dumps(
-                    {
-                        "ultron_tool": "create_task",
-                        "arguments": {"title": "Kite design"},
-                    }
-                )
-            else:
-                yield "The task is saved."
+            yield json.dumps(
+                {"ultron_tool": "create_task", "arguments": {"title": "Kite design"}}
+            )
 
         with patch.object(chat_blueprint.ollama, "stream_chat", fake_stream_chat):
             response = client.post(
@@ -196,12 +245,12 @@ class ChatToolLoopTests(unittest.TestCase):
             )
 
         body = response.get_data(as_text=True)
-        self.assertIn("event: tool", body)
+        self.assertNotIn("event: tool", body)
+        self.assertIn("Tool calling is disabled", body)
         self.assertIn("event: done", body)
-        self.assertIn("The task is saved.", body)
-        self.assertIn("I enjoy kite design", captured_messages[0][0]["content"])
+        self.assertNotIn("ultron_tool", captured_messages[0][0]["content"])
         tasks = client.get("/api/tasks").get_json()["tasks"]
-        self.assertEqual(tasks[0]["title"], "Kite design")
+        self.assertEqual(tasks, [])
 
 
 class ModelDiscoveryTests(unittest.TestCase):

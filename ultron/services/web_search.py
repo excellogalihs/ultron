@@ -1,4 +1,4 @@
-"""Lightweight, zero-dependency web search and webpage retrieval using DuckDuckGo."""
+"""Web search and webpage retrieval."""
 
 import html
 import re
@@ -14,7 +14,7 @@ MAX_PAGE_TEXT_CHARS = 4000
 
 
 def search(query, max_results=5, timeout=5):
-    """Perform a lightweight DuckDuckGo web search.
+    """Search across available engines using the DDGS metasearch package.
 
     Returns a dict with:
       - ok (bool)
@@ -33,86 +33,53 @@ def search(query, max_results=5, timeout=5):
             "offline": False,
         }
 
-    url = "https://html.duckduckgo.com/html/?q=" + urlparse.quote(cleaned_query)
-    request = urlrequest.Request(
-        url,
-        headers={"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"},
-    )
-
     try:
-        with urlrequest.urlopen(request, timeout=timeout) as response:
-            content = response.read().decode("utf-8", "replace")
-    except (URLError, TimeoutError, OSError) as error:
+        from ddgs import DDGS
+    except ImportError:
         return {
             "ok": False,
             "query": cleaned_query,
             "results": [],
-            "error": "Internet connection is unavailable. Operating in local-only mode.",
-            "offline": True,
-        }
-    except HTTPError as error:
-        return {
-            "ok": False,
-            "query": cleaned_query,
-            "results": [],
-            "error": f"Search engine returned HTTP {error.code}.",
+            "error": "The search extension is missing. Install dependencies with pip install -r requirements.txt.",
             "offline": False,
         }
 
+    try:
+        matches = DDGS(timeout=max(1, int(timeout))).text(
+            cleaned_query,
+            max_results=max(1, min(int(max_results), 10)),
+            backend="auto",
+        )
+    except Exception as error:
+        message = str(error).strip()
+        offline = any(
+            term in message.lower()
+            for term in ("connect", "network", "dns", "resolve", "timeout", "internet")
+        )
+        return {
+            "ok": False,
+            "query": cleaned_query,
+            "results": [],
+            "error": "Internet connection is unavailable." if offline else (message or "Search provider failed."),
+            "offline": offline,
+        }
+
     results = []
-    # Extract web-result containers
-    blocks = re.findall(
-        r'<div[^>]*class=\"[^\"]*web-result[^\"]*\"[^>]*>(.*?)(?=<div[^>]*class=\"[^\"]*web-result|\Z)',
-        content,
-        re.DOTALL,
-    )
-
-    for block in blocks:
-        title_match = re.search(
-            r'<a[^>]*class=\"[^\"]*result__a[^\"]*\"[^>]*href=\"([^\"]*)\"[^>]*>(.*?)</a>',
-            block,
-            re.DOTALL,
-        )
-        if not title_match:
-            continue
-        raw_url, raw_title = title_match.group(1), title_match.group(2)
-        title = html.unescape(re.sub(r"<[^>]+>", "", raw_title)).strip()
-
-        actual_url = raw_url
-        if "uddg=" in raw_url:
-            m = re.search(r"uddg=([^&]+)", raw_url)
-            if m:
-                actual_url = urlparse.unquote(m.group(1))
-        elif raw_url.startswith("//"):
-            actual_url = "https:" + raw_url
-
-        # Skip tracking and sponsor links
-        if "duckduckgo.com/y.js" in actual_url or "bing.com/aclick" in actual_url:
-            continue
-
-        snippet_match = re.search(
-            r'<a[^>]*class=\"[^\"]*result__snippet[^\"]*\"[^>]*>(.*?)</a>',
-            block,
-            re.DOTALL,
-        )
-        snippet = ""
-        if snippet_match:
-            snippet = html.unescape(re.sub(r"<[^>]+>", "", snippet_match.group(1))).strip()
-
-        if title and actual_url.startswith(("http://", "https://")):
+    for item in matches or []:
+        title = (item.get("title") or "").strip()
+        url = (item.get("href") or item.get("url") or "").strip()
+        if title and url.startswith(("http://", "https://")):
             results.append({
                 "title": title,
-                "url": actual_url,
-                "snippet": snippet,
+                "url": url,
+                "snippet": (item.get("body") or item.get("snippet") or "").strip(),
             })
-            if len(results) >= max_results:
-                break
 
     return {
-        "ok": True,
+        "ok": bool(results),
         "query": cleaned_query,
         "results": results,
-        "error": None,
+        "error": None if results else "No search results were returned.",
         "offline": False,
     }
 

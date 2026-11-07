@@ -587,14 +587,6 @@ body[data-page="chat"] .main {
 
 .msg__action:disabled { opacity: 0.5; }
 
-.msg__tool-status {
-  margin: 0 0 8px;
-  color: var(--accent-bright);
-  font-size: 8px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .msg--user .msg__role {
   color: var(--accent-bright);
 }

@@ -232,22 +232,6 @@
             applyTitle(event.data.title);
           } else if (event.event === "error") {
             throw new Error(event.data.error || "The local model returned an error.");
-          } else if (event.event === "tool") {
-            const activity = document.createElement("div");
-            activity.className = "msg__tool-status";
-            const actionLabel = event.data.name.replaceAll("_", " ");
-            activity.textContent = !event.data.ok
-              ? `Action needs correction · ${actionLabel}`
-              : event.data.name === "web_search"
-                ? `Searched DuckDuckGo · ${actionLabel}`
-                : event.data.name === "fetch_webpage"
-                  ? `Retrieved web page · ${actionLabel}`
-                  : event.data.requires_approval
-                    ? `Suggestion ready for review · ${actionLabel}`
-                    : event.data.changed
-                      ? `Updated local workspace · ${actionLabel}`
-                      : `Checked local workspace · ${actionLabel}`;
-            target.body.replaceChildren(activity, target.textSpan, target.cursor);
           } else if (event.event === "done") {
             completed = true;
             if (event.data.content) {

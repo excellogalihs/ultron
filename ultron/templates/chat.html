@@ -81,6 +81,9 @@
       <div class="composer__field">
         <label class="sr-only" for="chat-input">Message ultron</label>
         <textarea id="chat-input" rows="1" placeholder="Message ultron…" maxlength="20000"></textarea>
+        {% if settings.voice_enabled == '1' %}
+        <button class="icon-btn composer__mic" type="button" id="chat-mic" title="Voice input (Speech to text)" aria-label="Voice input">{{ icon('mic', 16) }}</button>
+        {% endif %}
         <button class="icon-btn composer__stop" type="button" id="chat-stop" title="Stop generation" aria-label="Stop generation" hidden>{{ icon('close', 16) }}</button>
         <button class="composer__send" type="submit" id="chat-send" title="Send message" aria-label="Send message">{{ icon('send', 18) }}</button>
       </div>

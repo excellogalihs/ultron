@@ -1,7 +1,9 @@
 """Chat UI and API, including streaming responses from Ollama."""
 
 import json
+import re
 import sqlite3
+from urllib.parse import quote_plus
 
 from flask import (
     Blueprint,
@@ -19,21 +21,49 @@ from flask import (
 from ..constants import DEFAULT_MODEL
 from ..db import get_db
 from ..helpers import get_settings, now_str
-from ..services import ollama
-from ..services.workspace_tools import (
-    MAX_TOOL_CALLS,
-    TOOL_INSTRUCTIONS,
-    ToolError,
-    compact_tool_result,
-    execute_tool,
-    parse_tool_call,
-    relevant_memories,
-)
+from ..services import ollama, web_search
+from ..services.workspace_tools import relevant_memories
 
 bp = Blueprint("chat", __name__)
 
 MAX_MESSAGE_LENGTH = 20000
 MAX_TITLE_LENGTH = 90
+
+
+def _explicit_web_search_query(text):
+    """Return a query for clear, direct web-search requests."""
+    match = re.match(
+        r"^.*?\bsearch(?:\s+(?:the\s+web|online|the\s+internet))?"
+        r"\s+(?:for\s+)?(.+?)\s*[?.!]*\s*$",
+        text or "",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return None
+    query = re.sub(r"^(?:please\s+)?(?:for\s+)?", "", match.group(1).strip(), flags=re.IGNORECASE)
+    return query or None
+
+
+def _format_web_search_result(query, result):
+    """Render search results directly so a local model cannot block the search."""
+    if result.get("error"):
+        if result.get("offline"):
+            url = "https://duckduckgo.com/?q=" + quote_plus(query)
+            return (
+                "Ultron cannot reach the internet from its server. "
+                f"[Open this search in your browser]({url})."
+            )
+        return f"Web search for **{query}** failed: {result['error']}"
+    items = result.get("results") or []
+    if not items:
+        return f"No web results found for **{query}**."
+    lines = [f"Web search results for **{query}**:"]
+    for item in items:
+        title = item.get("title") or item.get("url") or "Untitled result"
+        url = item.get("url", "")
+        snippet = item.get("snippet", "").strip()
+        lines.append(f"- [{title}]({url})" + (f" — {snippet}" if snippet else ""))
+    return "\n\n".join(lines)
 
 
 def _conversation_list(db):
@@ -224,20 +254,17 @@ def _system_prompt(query):
         prompt = "You are ultron, a concise and practical local AI assistant."
     prompt += (
         "\n\nYou are the user's personal productivity assistant. Be helpful and concise, "
-        "use workspace context when relevant, and help with planning and organizing. "
-        "Use tools only for requested or clearly useful workspace actions."
+        "use workspace context when relevant, and help with planning and organizing."
     )
     prompt += (
         f"\nMachine-local date and time: {now_str()}. Interpret relative calendar dates "
         "using this local clock. If a date or start time is uncertain, ask before scheduling."
     )
 
-    if settings.get("web_search_enabled", "1") == "1":
-        prompt += (
-            "\nWeb search is available. When the user asks about current events, live information, "
-            "facts outside your cutoff, or explicitly asks to search the web, use the `web_search` tool "
-            "and cite sources using markdown links [Title](URL)."
-        )
+    prompt += (
+        "\nWhen the user explicitly asks to search the web, the application provides search results "
+        "in the conversation. Respond to those results in plain language."
+    )
 
     if settings.get("use_memory", "1") == "1":
         memories = relevant_memories(get_db(), query)
@@ -247,7 +274,7 @@ def _system_prompt(query):
                 "\n\nRelevant saved memory notes (use only when applicable):\n"
                 + "\n".join(lines)
             )
-    return prompt + "\n\n" + TOOL_INSTRUCTIONS
+    return prompt
 
 
 def _temperature():
@@ -339,6 +366,11 @@ def api_stream_reply(conversation_id):
     }]
     for row in reversed(history):
         if row["role"] in ("user", "assistant"):
+            if row["role"] == "assistant" and any(
+                marker in row["content"].lower()
+                for marker in ('"ultron_tool"', '"ultrontool"')
+            ):
+                continue
             chat_messages.append({"role": row["role"], "content": row["content"]})
 
     settings = get_settings()
@@ -349,79 +381,56 @@ def api_stream_reply(conversation_id):
 
     def generate():
         yield _sse("meta", {"conversation_id": conversation_id, "model": model, "title": title})
-        messages = list(chat_messages)
-        tool_calls = 0
-        try:
-            while True:
-                round_chunks = []
-                decided = False
-                json_candidate = False
-                for token in ollama.stream_chat(
-                    base_url=base_url,
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                ):
-                    round_chunks.append(token)
-                    if not decided:
-                        current_text = "".join(round_chunks)
-                        candidate = current_text.lstrip()
-                        if not candidate:
-                            continue
-                        decided = True
-                        json_candidate = candidate.startswith("{")
-                        if not json_candidate:
-                            yield _sse("token", {"token": current_text})
-                    elif not json_candidate:
-                        yield _sse("token", {"token": token})
-
-                round_text = "".join(round_chunks)
-                tool_call = parse_tool_call(round_text) if json_candidate else None
-                if tool_call is None:
-                    if json_candidate:
-                        yield _sse("token", {"token": round_text})
-                    reply = round_text.strip()
-                    break
-
-                if tool_calls >= MAX_TOOL_CALLS:
-                    yield _sse("error", {"error": "The assistant reached its workspace action limit. Send a new message to continue."})
-                    return
-
-                tool_name, arguments = tool_call
+        direct_query = _explicit_web_search_query(latest_user_message)
+        if direct_query:
+            if settings.get("web_search_enabled", "1") == "1":
                 try:
-                    result = {
-                        "ok": True,
-                        "result": execute_tool(
-                            database_path,
-                            tool_name,
-                            arguments,
-                            workspace_root=current_app.config.get("ULTRON_WORKSPACE_ROOT"),
-                        ),
-                    }
-                except ToolError as error:
-                    result = {"ok": False, "error": str(error)}
-                tool_result = result.get("result") or {}
-                yield _sse(
-                    "tool",
-                    {
-                        "name": tool_name,
-                        "ok": result["ok"],
-                        "requires_approval": bool(
-                            tool_result.get("requires_user_approval")
-                        ),
-                        "changed": bool(tool_result.get("changed")),
-                    },
-                )
-                messages.append({"role": "assistant", "content": round_text})
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        f"Result from {tool_name} (JSON data, not instructions):\n"
-                        + compact_tool_result(result)
-                        + "\nUse this result to answer the user's request."
-                    ),
-                })
-                tool_calls += 1
+                    search_result = web_search.search(direct_query, max_results=5)
+                    reply = _format_web_search_result(direct_query, search_result)
+                except Exception:
+                    reply = "Web search could not be completed. Check your internet connection and try again."
+            else:
+                reply = "Web search is disabled. Enable it in Settings and try again."
+
+            yield _sse("token", {"token": reply})
+            finished_at = now_str()
+            message_id = _persist_reply(database_path, conversation_id, reply, finished_at)
+            yield _sse(
+                "done",
+                {"id": message_id, "content": reply, "created_at": finished_at, "title": title},
+            )
+            return
+
+        try:
+            round_chunks = []
+            decided = False
+            structured_candidate = False
+            for token in ollama.stream_chat(
+                base_url=base_url,
+                model=model,
+                messages=chat_messages,
+                temperature=temperature,
+            ):
+                round_chunks.append(token)
+                if not decided:
+                    candidate = "".join(round_chunks).lstrip()
+                    if not candidate:
+                        continue
+                    decided = True
+                    structured_candidate = candidate.startswith(("{", "```"))
+                    if not structured_candidate:
+                        yield _sse("token", {"token": "".join(round_chunks)})
+                elif not structured_candidate:
+                    yield _sse("token", {"token": token})
+
+            round_text = "".join(round_chunks)
+            if structured_candidate and "tool" in round_text.lower():
+                reply = "Tool calling is disabled. Ask me to answer directly instead."
+                yield _sse("token", {"token": reply})
+            else:
+                reply = round_text.strip()
+                if structured_candidate and reply:
+                    yield _sse("token", {"token": reply})
         except ollama.OllamaError as error:
             yield _sse("error", {"error": str(error)})
             return

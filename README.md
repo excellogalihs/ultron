@@ -16,14 +16,14 @@ A local-first AI workspace built for low-end computers. ultron is a lightweight 
 - **Chat with Voice & Search** — persistent conversations, streaming Markdown/code responses, model switching, rename/delete, copy, regenerate, stop, and automatic titles.
   - **Voice Input (Speech-to-Text)**: Click the microphone in the composer to dictate messages using the browser's Web Speech API.
   - **Read Aloud (Text-to-Speech)**: Audio playback on assistant responses with auto-speak preference.
-  - **DuckDuckGo Web Search**: Model can query DuckDuckGo for live internet information, cite sources with clickable markdown links, and fetch webpage content without any third-party dependencies. Toggle search on/off directly from the composer.
+  - **Web Search**: Explicit search requests run directly through the Python `ddgs` metasearch package, with clickable source links. Fetch webpage content for summaries.
 - **Assistant tools** — strict application-controlled JSON tool execution loop:
   - Document read/create/edit proposals (with mandatory user approval before writing).
   - Bounded workspace file search, local file reading (`read_local_file`), and local text creation (`create_local_file`) restricted to authorized directories. Path traversal and unauthorized extensions are strictly blocked.
   - Calendar read/create with clear date/time validation.
   - Task read/create/update.
   - Memory read/save with relevance-filtered context injection.
-  - DuckDuckGo search (`web_search`) and webpage text reading (`fetch_webpage`).
+  - Web search via `ddgs` (`web_search`) and webpage text reading (`fetch_webpage`).
 - **Documents & File Management** — create, search, rename, autosave, format as Markdown or plain text, preview, and organize into folders.
   - **Import**: Upload text, Markdown, JSON, CSV, or code files directly into your workspace.
   - **Export**: Export individual documents as `.md`/`.txt`, or export all documents in structured JSON.
@@ -108,7 +108,7 @@ ultron/
 │   ├── helpers.py             # settings, formatting, nav context
 │   ├── services/
 │   │   ├── ollama.py          # stdlib Ollama client (streaming chat & tags)
-│   │   ├── web_search.py      # zero-dependency DuckDuckGo search & page reader
+│   │   ├── web_search.py      # ddgs metasearch & webpage reader
 │   │   └── workspace_tools.py # bounded tool execution & security checks
 │   ├── blueprints/            # home, chat, documents, calendar, tasks, memory, settings
 │   ├── templates/
