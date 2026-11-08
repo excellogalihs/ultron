@@ -64,7 +64,7 @@ def nav_items():
         ("Calendar", "calendar.index", "calendar", "calendar"),
         ("Memory", "memory.index", "memory", "memory"),
         ("Automations", "automations.index", "automations", "automation"),
-        ("Evolution", "evolution.index", "evolution", "memory"),
+        ("Evolution", "evolution.index", "evolution", "evolution"),
         ("Settings", "settings.index", "settings", "settings"),
     )
     items = []

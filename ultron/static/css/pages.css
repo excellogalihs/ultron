@@ -11,6 +11,15 @@
 .memory-card p { line-height: 1.6; color: var(--text-dim); }
 .memory-card__actions { display: flex; align-items: center; gap: 6px; }
 .memory-card__foot { gap: 12px; flex-wrap: wrap; }
+
+.learning-history__list { padding: 0 16px; }
+.learning-history__entry { padding: 13px 0; border-bottom: 1px solid var(--line); }
+.learning-history__entry:last-child { border-bottom: 0; }
+.learning-history__meta { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.learning-history__meta strong { color: var(--text); font-size: 10px; font-weight: 550; }
+.learning-history__meta time { flex: 0 0 auto; color: var(--text-faint); font-size: 8px; }
+.learning-history__entry p { margin: 6px 0 0; color: var(--text-dim); font-size: 10px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.learning-history__empty { margin: 0; padding: 16px 0; color: var(--text-muted); font-size: 10px; }
 #automation-form input, #automation-form select, #automation-form textarea { width: 100%; }
 #automation-form [hidden] { display: none !important; }
 .automation-layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 18px; align-items: start; }
