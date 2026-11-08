@@ -16,7 +16,6 @@
     </div>
     <div class="welcome__metrics" aria-label="Workspace totals">
       <div class="metric"><span class="metric__value">{{ "%02d"|format(stats.documents) }}</span><span class="metric__label">DOCS</span></div>
-      <div class="metric"><span class="metric__value">{{ "%02d"|format(stats.pending_tasks) }}</span><span class="metric__label">OPEN</span></div>
       <div class="metric"><span class="metric__value">{{ "%02d"|format(stats.memories) }}</span><span class="metric__label">MEMORY</span></div>
     </div>
   </div>
@@ -121,36 +120,6 @@
     <div class="dash-empty">
       {{ empty_state('calendar', 'Nothing scheduled', 'Your calendar is clear. Add an event when you need one.', true) }}
       <a class="btn btn--small" href="{{ url_for('calendar.index') }}">{{ icon('plus', 13) }} Add event</a>
-    </div>
-    {% endif %}
-  </section>
-
-  <section class="panel dash-card">
-    <div class="panel__head">
-      <div class="panel__title">{{ icon('tasks', 16) }}<span>Pending tasks</span><span class="panel__count">{{ "%02d"|format(stats.pending_tasks) }}</span></div>
-      <a class="text-link" href="{{ url_for('tasks.index') }}">View all {{ icon('arrow-right', 13) }}</a>
-    </div>
-    {% if pending_tasks %}
-    <ul class="row-list">
-      {% for task in pending_tasks %}
-      <li>
-        <a class="row row--task" href="{{ url_for('tasks.index', view='pending') }}">
-          <span class="task-dot task-dot--{{ task.priority }}"></span>
-          <span class="row__main">
-            <span class="row__title">{{ task.title }}</span>
-            <span class="row__meta">
-              {{ task.priority|capitalize }} priority{% if task.due_date %} · due {{ task.due_date|date }}{% endif %}
-            </span>
-          </span>
-          {% if task.due_date and task.due_date < today_value %}<span class="tag tag--danger">OVERDUE</span>{% endif %}
-        </a>
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <div class="dash-empty">
-      {{ empty_state('tasks', 'No pending tasks', 'Everything is clear. Add a task when something needs doing.', true) }}
-      <a class="btn btn--small" href="{{ url_for('tasks.index') }}">{{ icon('plus', 13) }} Add task</a>
     </div>
     {% endif %}
   </section>

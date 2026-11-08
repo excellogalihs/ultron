@@ -7,15 +7,13 @@ SEARCH_TYPES = {
     "documents": ("document", "Document"),
     "folders": ("folder", "Folder"),
     "conversations": ("conversation", "Conversation"),
-    "tasks": ("task", "Task"),
     "calendar": ("event", "Calendar"),
     "memories": ("memory", "Memory"),
     "knowledge": ("knowledge", "Knowledge"),
-    "projects": ("project", "Project"),
 }
 
 
-_STOPWORDS = set("a an and are as at be been book by can current do for from have how i in is it me my of on or our please say the this to we what when where which who with you your find show tell summarize summary discuss discussed working about documents document tasks task project projects calendar events event recent recently week tomorrow prioritize priority status textbook".split())
+_STOPWORDS = set("a an and are as at be been book by can current do for from have how i in is it me my of on or our please say the this to we what when where which who with you your find show tell summarize summary discuss discussed working about documents document calendar events event recent recently week tomorrow prioritize priority status textbook".split())
 
 
 def _terms(query):
@@ -74,16 +72,12 @@ def search_workspace(db, query, types=None, limit=40):
         if "conversations" in requested:
             sources.append(("conversation", "SELECT 'conversation', c.id, c.title, substr(COALESCE((SELECT m.content FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1),''),1,1200), c.updated_at FROM conversations c"))
             sources.append(("conversation", "SELECT 'conversation', m.conversation_id, c.title, substr(m.content,1,1200), m.created_at FROM messages m JOIN conversations c ON c.id=m.conversation_id"))
-        if "tasks" in requested:
-            sources.append(("task", "SELECT 'task', id, title, notes, created_at FROM tasks"))
         if "calendar" in requested:
             sources.append(("event", "SELECT 'event', id, title, description, start_at FROM events"))
         if "memories" in requested:
             sources.append(("memory", "SELECT 'memory', id, category, content, updated_at FROM memories"))
         if "knowledge" in requested:
             sources.append(("knowledge", "SELECT 'knowledge', id, title, substr(content,1,1200), imported_at FROM knowledge_files"))
-        if "projects" in requested:
-            sources.append(("project", "SELECT 'project', id, name, substr(description || ' ' || notes,1,1200), updated_at FROM projects"))
         for source, sql in sources:
             rows = db.execute(f"{sql} WHERE {like} ORDER BY 5 DESC LIMIT ?", (*query_params, limit)).fetchall()
             for row in rows:
@@ -122,11 +116,6 @@ def _resolve(db, source, item_id, title, content):
         row = db.execute("SELECT created_at FROM document_folders WHERE id=?", (item_id,)).fetchone()
         if not row: return None
         href, updated = f"/documents?folder={item_id}", row["created_at"]
-    elif source == "task":
-        row = db.execute("SELECT due_date AS updated_at,status,priority,project_id,created_at,completed_at FROM tasks WHERE id=?", (item_id,)).fetchone()
-        if not row: return None
-        href, updated = f"/tasks?view=all&task={item_id}", row["updated_at"]
-        metadata = {"status": row["status"], "priority": row["priority"], "project_id": row["project_id"], "due_date": row["updated_at"], "created_at": row["created_at"], "completed_at": row["completed_at"]}
     elif source == "event":
         row = db.execute("SELECT start_at AS updated_at,end_at,category FROM events WHERE id=?", (item_id,)).fetchone()
         if not row: return None
@@ -142,11 +131,6 @@ def _resolve(db, source, item_id, title, content):
         if not row: return None
         href, updated = f"/knowledge?file={item_id}", row["updated_at"]
         metadata = {"status": row["status"], "file_type": row["file_type"]}
-    elif source == "project":
-        row = db.execute("SELECT updated_at,status,deadline FROM projects WHERE id=?", (item_id,)).fetchone()
-        if not row: return None
-        href, updated = f"/projects?project={item_id}", row["updated_at"]
-        metadata = {"status": row["status"], "deadline": row["deadline"]}
     else:
         return None
     label = next((label for _, (kind, label) in SEARCH_TYPES.items() if kind == source), source.title())
@@ -175,7 +159,6 @@ def retrieve_context(db, query, max_items=6, max_characters=5000, include_memori
             seen.add((item["type"], item["id"]))
         if total >= max_characters:
             break
-    # If the user names a project, include its linked work as focused context.
     terms = _terms(query)
     lower_query = query.casefold()
     if any(word in lower_query for word in ("recent", "recently", "working on", "worked on")):
@@ -183,11 +166,9 @@ def retrieve_context(db, query, max_items=6, max_characters=5000, include_memori
         recent_rows = db.execute(
             "SELECT 'document' AS source,id,title,substr(content,1,1200),updated_at FROM documents WHERE updated_at>=? "
             "UNION ALL SELECT 'conversation',c.id,c.title,substr(COALESCE((SELECT m.content FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1),''),1,1200),c.updated_at FROM conversations c WHERE c.updated_at>=? "
-            "UNION ALL SELECT 'task',id,title,substr(notes,1,1200),COALESCE(completed_at,created_at) FROM tasks WHERE created_at>=? "
             "UNION ALL SELECT 'event',id,title,substr(description,1,1200),created_at FROM events WHERE created_at>=? "
             "UNION ALL SELECT 'knowledge',id,title,substr(content,1,1200),imported_at FROM knowledge_files WHERE imported_at>=? "
-            "UNION ALL SELECT 'project',id,name,substr(description || ' ' || notes,1,1200),updated_at FROM projects WHERE updated_at>=? "
-            "ORDER BY 5 DESC LIMIT 16", (cutoff, cutoff, cutoff, cutoff, cutoff, cutoff)
+            "ORDER BY 5 DESC LIMIT 16", (cutoff, cutoff, cutoff, cutoff)
         ).fetchall()
         for row in recent_rows:
             item = _resolve(db, row["source"], row["id"], row["title"], row["content"])
@@ -205,8 +186,7 @@ def retrieve_context(db, query, max_items=6, max_characters=5000, include_memori
         date_from, date_to = start.isoformat(), end.isoformat()
         rows = db.execute(
             "SELECT 'event' AS source,id,title,description AS content,start_at AS updated_at FROM events WHERE start_at>=? AND start_at<? "
-            "UNION ALL SELECT 'task',id,title,notes,due_date FROM tasks WHERE status='pending' AND (due_date<? OR (due_date IS NULL AND priority='high')) "
-            "ORDER BY updated_at LIMIT 30", (date_from, date_to, date_to)
+            "ORDER BY updated_at LIMIT 30", (date_from, date_to)
         ).fetchall()
         for row in rows:
             item = _resolve(db, row["source"], row["id"], row["title"], row["content"])
@@ -229,38 +209,6 @@ def retrieve_context(db, query, max_items=6, max_characters=5000, include_memori
                 selected.append(item)
                 seen.add(key)
                 total += len(item["snippet"])
-    if total < max_characters and terms:
-        match_expr = " OR ".join("lower(name) LIKE ?" for _ in terms)
-        score_expr = " + ".join("CASE WHEN lower(name) LIKE ? THEN 1 ELSE 0 END" for _ in terms)
-        matches = [f"%{term}%" for term in terms]
-        candidates = db.execute(
-            f"SELECT id,name FROM projects WHERE status='active' AND ({match_expr}) ORDER BY {score_expr} DESC,updated_at DESC LIMIT 3",
-            (*matches, *matches),
-        ).fetchall()
-        for project in candidates:
-            related = db.execute(
-                "SELECT 'task' AS source,t.id,t.title,substr(t.notes,1,1200) AS content,t.due_date AS updated_at FROM tasks t WHERE t.project_id=? "
-                "UNION ALL SELECT 'document',d.id,d.title,substr(d.content,1,1200),d.updated_at FROM project_documents p JOIN documents d ON d.id=p.document_id WHERE p.project_id=? "
-                "UNION ALL SELECT 'knowledge',k.id,k.title,substr(k.content,1,1200),k.updated_at FROM project_knowledge_files p JOIN knowledge_files k ON k.id=p.knowledge_file_id WHERE p.project_id=? "
-                "UNION ALL SELECT 'conversation',c.id,c.title,substr(COALESCE((SELECT m.content FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1),''),1,1200),c.updated_at FROM project_conversations p JOIN conversations c ON c.id=p.conversation_id WHERE p.project_id=? "
-                "ORDER BY updated_at DESC LIMIT 8",
-                (project["id"], project["id"], project["id"], project["id"]),
-            ).fetchall()
-            for row in related:
-                item = _resolve(db, row["source"], row["id"], row["title"], row["content"])
-                key = (item["type"], item["id"]) if item else None
-                if not item or (item["type"] == "knowledge" and item["metadata"].get("status") != "indexed") or key in seen:
-                    continue
-                item["label"] = f"{project['name']} · {item['label']}"
-                content = item["snippet"][: max(0, max_characters - total)]
-                if content:
-                    selected.append({**item, "snippet": content})
-                    seen.add(key)
-                    total += len(content)
-                if total >= max_characters:
-                    break
-            if total >= max_characters:
-                break
     bounded, remaining = [], max_characters
     for item in selected:
         if remaining <= 0 or len(bounded) >= max_items:

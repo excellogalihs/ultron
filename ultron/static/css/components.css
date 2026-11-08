@@ -424,8 +424,9 @@
 }
 
 .field input[type="date"],
-.field input[type="time"] {
-  color-scheme: dark;
+.field input[type="time"],
+.field input[type="datetime-local"] {
+  color-scheme: inherit;
 }
 
 .field input[type="range"] {

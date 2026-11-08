@@ -34,19 +34,6 @@ def index():
         (f"{tomorrow.isoformat()} 00:00:00",),
     ).fetchall()
 
-    pending_tasks = db.execute(
-        """
-        SELECT * FROM tasks
-        WHERE status = 'pending'
-        ORDER BY
-            CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
-            CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
-            due_date ASC,
-            id DESC
-        LIMIT 5
-        """
-    ).fetchall()
-
     recent_conversations = db.execute(
         """
         SELECT c.*,
@@ -61,9 +48,6 @@ def index():
 
     stats = {
         "documents": db.execute("SELECT COUNT(*) FROM documents").fetchone()[0],
-        "pending_tasks": db.execute(
-            "SELECT COUNT(*) FROM tasks WHERE status = 'pending'"
-        ).fetchone()[0],
         "conversations": db.execute("SELECT COUNT(*) FROM conversations").fetchone()[0],
         "memories": db.execute(
             "SELECT COUNT(*) FROM memories WHERE active = 1"
@@ -78,7 +62,6 @@ def index():
         today_events=today_events,
         recent_documents=recent_documents,
         upcoming_events=upcoming_events,
-        pending_tasks=pending_tasks,
         recent_conversations=recent_conversations,
         stats=stats,
         today_value=now_str()[:10],

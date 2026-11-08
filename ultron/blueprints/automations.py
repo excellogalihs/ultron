@@ -89,17 +89,8 @@ def _execute(db, automation, trigger="schedule"):
         rows = db.execute("SELECT title,start_at FROM events WHERE start_at>=? AND start_at<? ORDER BY start_at", (f"{today} 00:00:00", f"{today + timedelta(days=1)} 00:00:00")).fetchall()
         parts.append("Today's events: " + ("; ".join(f"{row['start_at'][11:16]} {row['title']}" for row in rows) if rows else "none scheduled"))
         actions.append({"step": "Read today's calendar events", "count": len(rows)})
-    if any(word in instruction for word in ("task", "unfinished", "productivity", "planning", "deadline")):
-        rows = db.execute("SELECT title,due_date,priority FROM tasks WHERE status='pending' ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, due_date LIMIT 30").fetchall()
-        parts.append("Pending tasks: " + ("; ".join(f"{row['title']}" + (f" (due {row['due_date']})" if row['due_date'] else "") for row in rows) if rows else "none"))
-        actions.append({"step": "Read pending tasks", "count": len(rows)})
-    if "completed" in instruction or "weekly" in instruction:
-        since = (datetime.now(_timezone(automation["timezone"])).date() - timedelta(days=7)).isoformat()
-        rows = db.execute("SELECT title,completed_at FROM tasks WHERE status='completed' AND completed_at>=? ORDER BY completed_at DESC LIMIT 50", (since,)).fetchall()
-        parts.append(f"Tasks completed in the last seven days: {len(rows)}" + ((" — " + "; ".join(row["title"] for row in rows)) if rows else ""))
-        actions.append({"step": "Summarize recently completed tasks", "count": len(rows)})
     if not actions:
-        raise ValueError("This routine does not match a supported local summary yet. Use instructions about calendar events, tasks, deadlines, or productivity.")
+        raise ValueError("This routine does not match a supported local summary yet. Use instructions about calendar events or schedules.")
     result = "\n".join(parts)
     now = now_str()
     db.execute("INSERT INTO local_notifications(category,title,message,created_at) VALUES('automation',?,?,?)", ("Automation: " + automation["name"], result[:4000], now))

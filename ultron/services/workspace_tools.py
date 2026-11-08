@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ..constants import EVENT_CATEGORIES, MEMORY_CATEGORIES, TASK_CATEGORIES, TASK_PRIORITIES
+from ..constants import EVENT_CATEGORIES, MEMORY_CATEGORIES
 from ..helpers import now_str
 from . import web_search
 
@@ -255,138 +255,6 @@ def _edit_document(db, arguments):
     }
 
 
-def _create_task(db, arguments):
-    args = _arguments(
-        arguments,
-        {"title", "notes", "priority", "category", "due_date", "due_time", "project_id"},
-        {"title"},
-    )
-    title = _text(args["title"], "Task title", 300, required=True)
-    notes = _text(args.get("notes", ""), "Task notes", 4000)
-    priority = args.get("priority", "normal")
-    if priority not in TASK_PRIORITIES:
-        raise ToolError("Priority must be low, normal, or high.")
-    category = args.get("category", "general")
-    if category not in TASK_CATEGORIES:
-        raise ToolError("Invalid task category.")
-    due_date = _date(args.get("due_date"), "Due date", optional=True)
-    due_time = _time(args.get("due_time"), "Due time")
-    if due_time and not due_date:
-        raise ToolError("A due date is required when setting a reminder time.")
-    project_id = args.get("project_id")
-    if project_id is not None:
-        if isinstance(project_id, bool) or not isinstance(project_id, int) or not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone():
-            raise ToolError("Project id must identify an existing project.")
-    cursor = db.execute(
-          """INSERT INTO tasks (title, notes, status, priority, category, due_date, due_time, project_id, created_at)
-              VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)""",
-          (title, notes, priority, category, due_date, due_time, project_id, now_str()),
-    )
-    return {"task": _row_dict(db.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone())}
-
-
-def _read_tasks(db, arguments):
-    args = _arguments(arguments, {"status", "category", "project_id"})
-    status = args.get("status", "pending")
-    if status not in ("pending", "completed", "all"):
-        raise ToolError("Task status must be pending, completed, or all.")
-    category = args.get("category")
-    if category is not None and category not in TASK_CATEGORIES:
-        raise ToolError("Invalid task category.")
-    conditions = []
-    params = []
-    if status != "all":
-        conditions.append("status = ?")
-        params.append(status)
-    if category:
-        conditions.append("category = ?")
-        params.append(category)
-    if "project_id" in args:
-        project_id = args["project_id"]
-        if isinstance(project_id, bool) or not isinstance(project_id, int) or not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone():
-            raise ToolError("Project id must identify an existing project.")
-        conditions.append("project_id = ?")
-        params.append(project_id)
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    rows = db.execute(
-        f"""SELECT id, title, notes, status, priority, category, due_date, due_time, project_id, created_at
-            FROM tasks {where}
-            ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END,
-                CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
-                CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, id DESC
-            LIMIT 100""",
-        params,
-    ).fetchall()
-    return {"tasks": [_row_dict(row) for row in rows]}
-
-
-def _update_task(db, arguments):
-    allowed = {"id", "title", "notes", "priority", "category", "due_date", "due_time", "status", "project_id"}
-    args = _arguments(arguments, allowed, {"id"})
-    task_id = args["id"]
-    if isinstance(task_id, bool) or not isinstance(task_id, int):
-        raise ToolError("Task id must be an integer.")
-    row = db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
-    if row is None:
-        raise ToolError("Task not found.")
-    fields, values = [], []
-    if "title" in args:
-        fields.append("title = ?")
-        values.append(_text(args["title"], "Task title", 300, required=True))
-    if "notes" in args:
-        fields.append("notes = ?")
-        values.append(_text(args["notes"], "Task notes", 4000))
-    if "priority" in args:
-        if args["priority"] not in TASK_PRIORITIES:
-            raise ToolError("Priority must be low, normal, or high.")
-        fields.append("priority = ?")
-        values.append(args["priority"])
-    if "category" in args:
-        if args["category"] not in TASK_CATEGORIES:
-            raise ToolError("Invalid task category.")
-        fields.append("category = ?")
-        values.append(args["category"])
-    if "due_date" in args:
-        due_date = _date(args["due_date"], "Due date", optional=True)
-        fields.append("due_date = ?")
-        values.append(due_date)
-        if due_date is None and "due_time" not in args:
-            fields.append("due_time = ?")
-            values.append(None)
-    if "due_time" in args:
-        fields.append("due_time = ?")
-        values.append(_time(args["due_time"], "Due time"))
-    if "project_id" in args:
-        project_id = args["project_id"]
-        if project_id is not None and (isinstance(project_id, bool) or not isinstance(project_id, int) or not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone()):
-            raise ToolError("Project id must identify an existing project.")
-        fields.append("project_id = ?")
-        values.append(project_id)
-    if "status" in args:
-        status = args["status"]
-        if status not in ("pending", "completed"):
-            raise ToolError("Task status must be pending or completed.")
-        fields.extend(("status = ?", "completed_at = ?"))
-        values.extend((status, now_str() if status == "completed" else None))
-    if not fields:
-        raise ToolError("Provide at least one task field to update.")
-    values.append(task_id)
-    db.execute(f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?", values)
-    return {"task": _row_dict(db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone())}
-
-
-def _delete_task(db, arguments):
-    args = _arguments(arguments, {"id"}, {"id"})
-    task_id = args["id"]
-    if isinstance(task_id, bool) or not isinstance(task_id, int):
-        raise ToolError("Task id must be an integer.")
-    row = db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
-    if row is None:
-        raise ToolError("Task not found.")
-    db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-    return {"deleted_task": _row_dict(row)}
-
-
 def _read_calendar_events(db, arguments):
     args = _arguments(arguments, {"date_from", "date_to"})
     date_from = _date(args.get("date_from"), "Start date", optional=True)
@@ -615,10 +483,6 @@ _TOOL_HANDLERS = {
     "read_document": _read_document,
     "create_document": _create_document,
     "edit_document": _edit_document,
-    "create_task": _create_task,
-    "read_tasks": _read_tasks,
-    "update_task": _update_task,
-    "delete_task": _delete_task,
     "read_calendar_events": _read_calendar_events,
     "create_calendar_event": _create_calendar_event,
     "update_calendar_event": _update_calendar_event,
@@ -757,9 +621,6 @@ def parse_tool_call(text, fallback_query=None):
     normalized = re.sub(r"[\s-]+", "_", raw_name.strip().lower())
     name = {
         "search_web": "web_search",
-        "list_tasks": "read_tasks",
-        "get_tasks": "read_tasks",
-        "task_list": "read_tasks",
         "list_events": "read_calendar_events",
         "get_events": "read_calendar_events",
         "list_calendar_events": "read_calendar_events",
@@ -769,8 +630,6 @@ def parse_tool_call(text, fallback_query=None):
         "add_calendar_event": "create_calendar_event",
         "update_event": "update_calendar_event",
         "delete_event": "delete_calendar_event",
-        "add_task": "create_task",
-        "edit_task": "update_task",
         "edit_event": "update_calendar_event",
         "edit_calendar_event": "update_calendar_event",
     }.get(normalized, normalized)

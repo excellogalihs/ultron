@@ -388,7 +388,12 @@ def api_export(document_id):
     if row is None:
         return jsonify(error="Document not found."), 404
     fmt = request.args.get("format") or row["format"] or "markdown"
-    ext = ".docx" if fmt == "docx" else (row["file_type"] or (".md" if fmt == "markdown" else ".txt")).lower()
+    if fmt == "docx":
+        ext = ".docx"
+    elif fmt in {"text", "txt"}:
+        ext = ".txt"
+    else:
+        ext = (row["file_type"] or (".md" if fmt == "markdown" else ".txt")).lower()
     if not ext.startswith("."):
         ext = f".{ext}"
     title = row["title"] or "untitled"

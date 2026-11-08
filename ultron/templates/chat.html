@@ -50,7 +50,6 @@
         <p>Ask a question, work through an idea, or paste something you want to understand. Inference runs locally with {{ current_model }}.</p>
         <div class="prompt-starters">
           <button type="button" data-prompt="Summarize the key points of this text: ">{{ icon('spark', 14) }} Summarize a long text</button>
-          <button type="button" data-prompt="Draft a short, clear plan for: ">{{ icon('tasks', 14) }} Draft a plan</button>
           <button type="button" data-prompt="Write a professional report about: ">{{ icon('doc', 14) }} Write a document</button>
           <button type="button" data-prompt="Explain this in plain language: ">{{ icon('chat', 14) }} Explain a concept</button>
         </div>
@@ -103,16 +102,8 @@
         <button class="btn btn--small" type="button" id="workspace-save">Save</button>
         <a class="btn btn--small" id="workspace-export" href="#" download>Export DOCX</a>
       </div>
-      <div class="workspace-toolbar">
-        <button type="button" data-format="bold" title="Bold"><strong>B</strong></button><button type="button" data-format="italic" title="Italic"><em>I</em></button><button type="button" data-format="underline" title="Underline"><u>U</u></button><button type="button" data-format="strike" title="Strikethrough"><s>S</s></button>
-        <button type="button" data-format="align-left" title="Align left">L</button><button type="button" data-format="align-center" title="Center">C</button><button type="button" data-format="align-right" title="Align right">R</button>
-        <span></span><button type="button" data-format="heading" title="Heading">H</button><button type="button" data-format="bullet" title="Bulleted list">• List</button><button type="button" data-format="number" title="Numbered list">1. List</button><button type="button" data-format="table" title="Insert table">Table</button><button type="button" data-format="pagebreak" title="Page break">Page break</button>
-        <span class="toolbar-spacer"></span><select id="workspace-template" aria-label="Insert document template"><option value="">Template…</option><option value="essay">Essay</option><option value="academic">Academic report</option><option value="professional">Professional report</option><option value="speech">Speech</option><option value="letter">Business letter</option><option value="meeting">Meeting notes</option><option value="study">Study guide</option></select>
-        <select id="workspace-version-select" aria-label="Document version history"><option value="">History…</option></select><button type="button" id="workspace-restore" title="Restore selected version">Restore</button>
-      </div>
-      <div class="workspace-findbar"><input id="workspace-find" placeholder="Find" aria-label="Find text"><input id="workspace-replace" placeholder="Replace with" aria-label="Replacement text"><button type="button" id="workspace-find-button">Find next</button><button type="button" id="workspace-replace-button">Replace all</button><button class="icon-btn icon-btn--danger" type="button" id="workspace-delete" title="Delete document" aria-label="Delete document">Delete</button></div>
-      <div class="workspace-modebar"><div class="segmented" role="group" aria-label="Document mode"><button type="button" data-work-mode="edit" class="is-active" aria-pressed="true">Edit</button><button type="button" data-work-mode="preview" aria-pressed="false">Preview</button></div><span id="workspace-word-count">0 words</span><button type="button" id="workspace-insert-email" class="workspace-insert-email" hidden>Insert reply</button></div>
-      <div class="workspace-editors"><textarea id="workspace-content" spellcheck="true" placeholder="Start writing or ask ultron to draft this document…" aria-label="Document content"></textarea><article id="workspace-preview" class="workspace-preview" hidden></article></div>
+      <div class="workspace-modebar"><div class="segmented" role="group" aria-label="Document mode"><button type="button" data-work-mode="edit" class="is-active" aria-pressed="true">Write</button><button type="button" data-work-mode="preview" aria-pressed="false">Preview</button></div><span id="workspace-word-count">0 words</span><button type="button" id="workspace-insert-email" class="workspace-insert-email" hidden>Insert reply</button></div>
+      <div class="workspace-editors"><textarea id="workspace-content" spellcheck="true" placeholder="Start writing…" aria-label="Document content"></textarea><article id="workspace-preview" class="workspace-preview" hidden></article></div>
       <footer class="workspace-foot"><span id="workspace-doc-meta">Local document · A4 DOCX export</span><button type="button" id="workspace-open-library">Open library</button></footer>
     </section>
     <section class="workspace-email" id="workspace-email" hidden>
@@ -147,6 +138,6 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/markdown.js') }}" defer></script>
-<script src="{{ url_for('static', filename='js/workspace.js', v=3) }}" defer></script>
-<script src="{{ url_for('static', filename='js/chat.js', v=3) }}" defer></script>
+<script src="{{ url_for('static', filename='js/workspace.js', v=9) }}" defer></script>
+<script src="{{ url_for('static', filename='js/chat.js', v=12) }}" defer></script>
 {% endblock %}

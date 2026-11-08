@@ -4,7 +4,7 @@ A local-first AI workspace built for low-end computers. ultron is a lightweight 
 
 ```
 ┌─ ULTRON ───────────────────────────────────────────────────────────────────┐
-│  Home  Chat  Calendar  Tasks  Memory  Automations  Evolution             │
+│  Home  Chat  Calendar  Memory  Automations  Evolution                     │
 │                                                                            │
 │  local SQLite  ──  Flask  ──  Ollama (gemma3:1b / 4b)  ──  Web Search     │
 └────────────────────────────────────────────────────────────────────────────┘
@@ -12,33 +12,31 @@ A local-first AI workspace built for low-end computers. ultron is a lightweight 
 
 ## What works
 
-- **Home dashboard** — welcome state, workspace totals, recently edited documents, today's events, upcoming events, pending tasks, recent conversations, and a quick prompt that starts a real chat thread.
+- **Home dashboard** — welcome state, workspace totals, recently edited documents, today's events, upcoming events, recent conversations, and a quick prompt that starts a real chat thread.
 - **Chat & Search** — persistent conversations, streaming Markdown/code responses, model switching, rename/delete, copy, regenerate, stop, and automatic titles.
   - **Document editing**: Attach `.docx`, `.txt`, `.md`, and common text/code files. Ask ultron to revise them in chat and download the result in the source file type.
   - **Web Search**: Explicit search requests run directly through the Python `ddgs` metasearch package, with clickable source links. Fetch webpage content for summaries.
 - **Assistant tools** — strict application-controlled JSON tool execution loop:
   - Document read/create/edit proposals (with mandatory user approval before writing).
   - Bounded workspace file search, local file reading (`read_local_file`), and local text creation (`create_local_file`) restricted to authorized directories. Path traversal and unauthorized extensions are strictly blocked.
-  - Calendar and task read/create/update/delete, with direct user-requested changes.
+  - Calendar event read/create/update/delete, with direct user-requested changes.
   - Memory read/save with relevance-filtered context injection.
   - Web search via `ddgs` (`web_search`) and webpage text reading (`fetch_webpage`).
-- **Chat writing workspace** — document requests open a resizable chat/editor split pane. Edit directly, preview Markdown, apply formatting, search and replace, use practical templates, recover version snapshots, and export structured A4 `.docx` files. Existing document links open their document beside chat; the old library remains reachable from Home.
+- **Chat writing workspace** — document requests open a fixed chat/editor split pane. Edit directly, preview Markdown, and export `.docx` files. Existing document links open their document beside chat; the old library remains reachable from Home.
 - **Email reply drafts** — paste an incoming email into chat for a locally generated, editable reply. The original stays in the conversation, and drafts can be copied or revised; ultron never sends email.
 - **Documents & File Management** — create, search, rename, autosave, format as Markdown or plain text, preview, and organize into folders. Import `.docx`, `.txt`, `.md`, and common text/code files. Word import/export supports paragraphs, heading styles, lists, and basic tables; unsupported Word-specific features may not be preserved.
   - **Import**: Upload text, Markdown, JSON, CSV, or code files directly into your workspace.
   - **Export**: Export individual documents as `.md`/`.txt`, or export all documents in structured JSON.
   - **AI Writing Panel**: Streams suggestions for selected text or whole documents with one-click Accept/Reject.
 - **Knowledge Base** — import PDF, DOCX, TXT, and Markdown references, organize collections, preview extracted text, and search locally. PDF extraction uses `pypdf` with a `pdftotext` fallback; duplicate file contents are detected by SHA-256.
-- **Projects** — track descriptions, notes, deadlines, archive state, and task progress while linking existing tasks, documents, knowledge files, and conversations.
 - **Workspace Search & Context** — FTS5 indexes workspace titles and text when SQLite supports it, with bounded LIKE fallback. Chat retrieves a small, relevance-ranked set of local excerpts and cites the source instead of sending the full database to Ollama.
 - **Calendar** — monthly, weekly, and daily views with local event creation, editing, deletion, descriptions, times, categories, upcoming/today dashboard sections, and event reminders.
-- **Tasks** — add, edit, categorize, complete/reopen, and delete tasks with priority, notes, and due dates; assistant can manage the full task list and due reminders.
 - **Memory** — store facts/preferences, edit and delete them, and toggle their use. Only a small keyword-ranked subset relevant to the current request is included in AI context; the entire memory table is never sent.
-- **Automations** — save one-time, daily, weekly, monthly, or interval routines in SQLite. A single lightweight local scheduler recovers due routines after restart, uses IANA timezones, and records completed/failed runs. Current routines produce read-only local summaries for calendar events and tasks; unsupported instructions fail visibly. Each routine run also creates an in-app notification.
-- **Evolution** — browse, edit, archive, and delete reusable task experiences. Confirmed task and calendar writes are recorded and matched with bounded keyword retrieval; failed task/calendar tool calls are kept as cautions and identical failed calls are not executed repeatedly in one request.
-- **Memory suggestions** — explicit preference, reusable-instruction, and ongoing-project statements can create inactive suggestions for review. Suggestions avoid credential-like statements and require approval before becoming active. Automatic learning and memory suggestions can be switched off in Settings.
+- **Automations** — save one-time, daily, weekly, monthly, or interval routines in SQLite. A single lightweight local scheduler recovers due routines after restart, uses IANA timezones, and records completed/failed runs. Current routines produce read-only local summaries for calendar events; unsupported instructions fail visibly. Each routine run also creates an in-app notification.
+- **Evolution** — browse, edit, archive, and delete reusable work experiences. Confirmed calendar changes are recorded and matched with bounded keyword retrieval; failed calendar tool calls are kept as cautions and identical failed calls are not executed repeatedly in one request.
+- **Memory suggestions** — explicit preference, reusable-instruction, and ongoing-work statements can create inactive suggestions for review. Suggestions avoid credential-like statements and require approval before becoming active. Automatic learning and memory suggestions can be switched off in Settings.
 - **Customization & Themes** — choose between Dark Onyx, OLED Black, Light Paper, and Nord Dim themes, multiple accent colors (Violet, Emerald, Cyan, Amber, Rose, Monochrome), and typography (JetBrains Mono, Modern Sans, IBM Plex Mono).
-- **Settings, Backup & Restore** — customize operator name, default model, Ollama URL, temperature, system prompt, memory, web search, reminder timing, and chat shortcuts. Export full workspace JSON backups or restore previous backups with atomic SQLite rollback protection.
+- **Settings, Backup & Restore** — customize operator name, default model, Ollama URL, temperature, system prompt, memory, web search, calendar reminder timing, and chat shortcuts. Export full workspace JSON backups or restore previous backups with atomic SQLite rollback protection.
 
 All data lives in `instance/ultron.db` and never leaves the machine. The app binds to `127.0.0.1` by default. Workspace file operations are strictly scoped to the workspace root (`ULTRON_WORKSPACE_ROOT` or project directory by default); hidden files, dependency/build directories, symlinks, and oversized files are skipped. The automation scheduler runs only while the Flask app is running.
 
@@ -116,7 +114,7 @@ ultron/
 │   │   ├── ollama.py          # stdlib Ollama client (streaming chat & tags)
 │   │   ├── web_search.py      # ddgs metasearch & webpage reader
 │   │   └── workspace_tools.py # bounded tool execution & security checks
-│   ├── blueprints/            # home, chat, documents, calendar, tasks, memory, settings
+│   ├── blueprints/            # home, chat, documents, calendar, memory, settings
 │   ├── templates/
 │   │   ├── base.html
 │   │   ├── components/        # sidebar, topbar, icons, logo, empty states
@@ -137,9 +135,7 @@ ultron/
 | Documents | `GET/POST /api/documents`, `GET/PATCH/DELETE /api/documents/<id>`, `POST /api/documents/import`, `GET /api/documents/<id>/export`, `GET /api/documents/<id>/versions`, version restore, and `GET /api/documents/export-all` |
 | Search | `GET /search`, `GET /api/search?q=...&type=...` |
 | Knowledge | `GET /knowledge`, `POST /api/knowledge/import`, `GET/DELETE /api/knowledge/<id>`, collection APIs |
-| Projects | `GET /projects`, `GET/POST /api/projects`, `GET/PATCH/DELETE /api/projects/<id>`, project link APIs |
 | Calendar | `GET/POST /api/events`, `GET/PATCH/DELETE /api/events/<id>` |
-| Tasks | `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/<id>` |
 | Memory | `GET/POST /api/memories`, `PATCH/DELETE /api/memories/<id>` |
 | Engine | `GET /api/ollama/status?url=...` |
 | Data | `GET /settings/export`, `POST /settings/restore` |

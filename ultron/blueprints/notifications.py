@@ -1,4 +1,4 @@
-"""In-app and optional desktop reminders for tasks and calendar events."""
+"""In-app and optional desktop reminders for calendar events."""
 
 from datetime import datetime, timedelta
 
@@ -11,40 +11,17 @@ bp = Blueprint("notifications", __name__)
 
 
 def _reminder_settings():
-    settings = get_settings()
     try:
-        task_time = datetime.strptime(settings.get("task_reminder_time", "09:00"), "%H:%M").strftime("%H:%M")
-    except ValueError:
-        task_time = "09:00"
-    try:
-        event_minutes = int(settings.get("event_reminder_minutes", "10"))
+        event_minutes = int(get_settings().get("event_reminder_minutes", "10"))
     except (TypeError, ValueError):
         event_minutes = 10
-    return task_time, min(max(event_minutes, 0), 120)
+    return min(max(event_minutes, 0), 120)
 
 
 def _schedule_due_reminders(db, now):
-    task_time, event_minutes = _reminder_settings()
+    event_minutes = _reminder_settings()
     current = now.strftime("%Y-%m-%d %H:%M:%S")
     new_ids = []
-
-    due_tasks = db.execute(
-        "SELECT id, title, due_date, due_time FROM tasks WHERE status = 'pending' AND due_date = ?",
-        (now.date().isoformat(),),
-    ).fetchall()
-    for task in due_tasks:
-        reminder_time = task["due_time"] or task_time
-        due_at = f"{task['due_date']} {reminder_time}:00"
-        if due_at > current:
-            continue
-        cursor = db.execute(
-            """INSERT OR IGNORE INTO notifications
-               (source_type, source_id, schedule_key, title, message, due_at, created_at)
-               VALUES ('task', ?, ?, ?, ?, ?, ?)""",
-            (task["id"], f"{task['due_date']} {reminder_time}", "Task due today", task["title"], due_at, current),
-        )
-        if cursor.rowcount:
-            new_ids.append(cursor.lastrowid)
 
     event_floor = (now - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
     event_ceiling = (now + timedelta(minutes=event_minutes + 15)).strftime("%Y-%m-%d %H:%M:%S")
@@ -77,7 +54,7 @@ def _schedule_due_reminders(db, now):
 
 def _notification_dict(row):
     item = dict(row)
-    item["href"] = "/tasks?view=pending" if item["source_type"] == "task" else "/calendar?view=day&date=" + item["schedule_key"][:10]
+    item["href"] = "/calendar?view=day&date=" + item["schedule_key"][:10]
     item["read_url"] = f"/api/notifications/{item['id']}/read"
     return item
 
@@ -87,7 +64,7 @@ def api_list():
     db = get_db()
     new_ids = _schedule_due_reminders(db, datetime.now().replace(microsecond=0))
     rows = db.execute(
-        "SELECT * FROM notifications ORDER BY created_at DESC, id DESC LIMIT 40"
+        "SELECT * FROM notifications WHERE source_type = 'event' ORDER BY created_at DESC, id DESC LIMIT 40"
     ).fetchall()
     by_id = {row["id"]: row for row in rows}
     new_notifications = [_notification_dict(by_id[item_id]) for item_id in new_ids if item_id in by_id]
@@ -100,7 +77,7 @@ def api_list():
     merged = [_notification_dict(row) for row in rows] + local_notifications
     merged.sort(key=lambda item: (item["created_at"], item["id"]), reverse=True)
     merged = merged[:40]
-    unread = db.execute("SELECT COUNT(*) FROM notifications WHERE read_at IS NULL").fetchone()[0] + db.execute("SELECT COUNT(*) FROM local_notifications WHERE read_at IS NULL").fetchone()[0]
+    unread = db.execute("SELECT COUNT(*) FROM notifications WHERE source_type='event' AND read_at IS NULL").fetchone()[0] + db.execute("SELECT COUNT(*) FROM local_notifications WHERE read_at IS NULL").fetchone()[0]
     return jsonify(
         notifications=merged,
         new=new_notifications + [item for item in local_notifications if item["created_at"] >= datetime.now().strftime("%Y-%m-%d %H:%M")],
@@ -136,7 +113,7 @@ def api_read(notification_id):
         return jsonify(error="Notification not found."), 404
     db.execute("UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE id = ?", (now_str(), notification_id))
     db.commit()
-    unread = db.execute("SELECT COUNT(*) FROM notifications WHERE read_at IS NULL").fetchone()[0]
+    unread = db.execute("SELECT COUNT(*) FROM notifications WHERE source_type='event' AND read_at IS NULL").fetchone()[0]
     return jsonify(ok=True, unread=unread)
 
 

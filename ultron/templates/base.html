@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css', v=4) }}">
   {% block head %}{% endblock %}
 </head>
 <body data-page="{{ page }}"{% if conversation is defined and conversation %} data-conversation-id="{{ conversation.id }}"{% endif %}>
@@ -39,7 +39,7 @@
       <noscript>
         <div class="flash flash--error noscript-note">
           <span class="flash__icon">{{ icon('alert', 16) }}</span>
-          <span class="flash__text">JavaScript is required for chat, editing, and task actions. Enable it to use ultron.</span>
+          <span class="flash__text">JavaScript is required for chat and editing. Enable it to use ultron.</span>
         </div>
       </noscript>
 

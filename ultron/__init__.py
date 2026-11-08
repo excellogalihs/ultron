@@ -68,10 +68,8 @@ def create_app(test_config=None):
     from .blueprints.memory import bp as memory_bp
     from .blueprints.marketing import bp as marketing_bp
     from .blueprints.notifications import bp as notifications_bp
-    from .blueprints.projects import bp as projects_bp
     from .blueprints.search import bp as search_bp
     from .blueprints.settings import bp as settings_bp
-    from .blueprints.tasks import bp as tasks_bp
 
     for blueprint in (
         home_bp,
@@ -81,11 +79,9 @@ def create_app(test_config=None):
         chat_bp,
         documents_bp,
         knowledge_bp,
-        projects_bp,
         calendar_bp,
         automations_bp,
         evolution_bp,
-        tasks_bp,
         memory_bp,
         settings_bp,
     ):

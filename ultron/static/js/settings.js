@@ -168,7 +168,7 @@
     restoreFileInput.addEventListener("change", () => {
       if (!restoreFileInput.files.length) return;
       const file = restoreFileInput.files[0];
-      if (confirm(`Restoring from "${file.name}" will replace all current workspace documents, tasks, events, and memories with the backup data. Continue?`)) {
+      if (confirm(`Restoring from "${file.name}" will replace the current workspace data with the backup. Continue?`)) {
         restoreForm.submit();
       } else {
         restoreFileInput.value = "";

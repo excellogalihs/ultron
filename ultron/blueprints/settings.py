@@ -159,12 +159,6 @@ def save():
 
     web_search_enabled = "1" if form.get("web_search_enabled") == "1" else "0"
     try:
-        task_reminder_time = datetime.strptime(
-            form.get("task_reminder_time", get_settings().get("task_reminder_time", "09:00")), "%H:%M"
-        ).strftime("%H:%M")
-    except ValueError:
-        task_reminder_time = "09:00"
-    try:
         event_reminder_minutes = int(form.get("event_reminder_minutes", get_settings().get("event_reminder_minutes", "10")))
     except (TypeError, ValueError):
         event_reminder_minutes = 10
@@ -194,7 +188,6 @@ def save():
     _upsert(db, "font", font)
     _upsert(db, "chat_send_key", chat_send_key)
     _upsert(db, "web_search_enabled", web_search_enabled)
-    _upsert(db, "task_reminder_time", task_reminder_time)
     _upsert(db, "event_reminder_minutes", event_reminder_minutes)
     db.commit()
     clear_settings_cache()

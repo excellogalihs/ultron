@@ -7,7 +7,6 @@
   const content = document.getElementById("workspace-content");
   const preview = document.getElementById("workspace-preview");
   const status = document.getElementById("workspace-save-status");
-  const versionSelect = document.getElementById("workspace-version-select");
   const editor = document.getElementById("workspace-document");
   const email = document.getElementById("workspace-email");
   const docTab = pane.querySelector('[data-work-kind="document"]');
@@ -70,7 +69,6 @@
       document.getElementById("workspace-export").href = `/api/documents/${docId}/export?format=docx`;
       history.replaceState(null, "", `${window.location.pathname}?doc=${docId}`);
       sessionStorage.setItem("ultron-active-document", String(docId));
-      await loadVersions();
       if (fileType.toLowerCase() === ".docx" && sessionStorage.getItem(`ultron-docx-note-${doc.id}`) !== "1") {
         sessionStorage.setItem(`ultron-docx-note-${doc.id}`, "1");
         Ultron.toast("Word import keeps supported text, headings, lists, and tables. Advanced Word-specific layout may not be preserved.");
@@ -79,6 +77,7 @@
     countWords();
     setMode(currentMode);
     if (window.innerWidth <= 900) setMobileView("workspace");
+    if (kind === "document") content.focus();
   };
   const close = () => {
     pane.hidden = true;
@@ -116,7 +115,6 @@
         document.getElementById("workspace-export").href = `/api/documents/${docId}/export?format=docx`;
         dirty = false;
         setStatus("Saved locally");
-        await loadVersions();
         return true;
       } catch (error) {
         setStatus("Save failed");
@@ -126,14 +124,6 @@
     })();
     return saving;
   };
-  const loadVersions = async () => {
-    if (!docId) return;
-    try {
-      const result = await Ultron.api(`/api/documents/${docId}/versions`);
-      versionSelect.replaceChildren(new Option("History…", ""));
-      result.versions.forEach((version) => versionSelect.add(new Option(`${version.created_at} · ${version.title}`, version.id)));
-    } catch { /* history is optional on an older local database */ }
-  };
   const setMobileView = (view) => {
     app.classList.toggle("mobile-pane-workspace", view === "workspace");
     app.classList.toggle("mobile-pane-chat", view === "chat");
@@ -141,23 +131,6 @@
     document.getElementById("workspace-mobile-open").hidden = view === "workspace" || window.innerWidth > 900;
   };
 
-  const templates = {
-    essay: "# Essay Title\n\n## Introduction\n\n## Main Argument\n\n## Supporting Points\n\n## Conclusion\n",
-    academic: "# Academic Report Title\n\n**Author:** [Name]  \n**Date:** [Date]\n\n## Abstract\n\n## Introduction\n\n## Method\n\n## Findings\n\n## Discussion\n\n## Conclusion\n\n## References\n",
-    professional: "# Professional Report\n\n**Prepared for:** [Audience]  \n**Prepared by:** [Name]  \n**Date:** [Date]\n\n## Executive Summary\n\n## Background\n\n## Analysis\n\n## Recommendations\n\n## Conclusion\n",
-    speech: "# Speech Title\n\n*[Occasion or audience]*\n\n## Opening\n\n## Main Message\n\n## Supporting Stories\n\n## Closing\n",
-    letter: "[Your name]\n[Your address]\n[Date]\n\n[Recipient name]\n[Organization]\n\nDear [Name],\n\n[Message]\n\nSincerely,\n[Your name]\n",
-    meeting: "# Meeting Notes\n\n**Date:** [Date]  \n**Attendees:** [Names]\n\n## Agenda\n\n## Discussion\n\n## Decisions\n\n## Action Items\n",
-    study: "# Study Guide: [Topic]\n\n## Learning Objectives\n\n## Key Concepts\n\n## Detailed Notes\n\n## Examples\n\n## Review Questions\n\n## Quick Summary\n",
-  };
-  const surround = (before, after = before) => {
-    const start = content.selectionStart;
-    const end = content.selectionEnd;
-    const selected = content.value.slice(start, end) || "text";
-    content.setRangeText(`${before}${selected}${after}`, start, end, "select");
-    content.focus();
-    markDirty();
-  };
   pane.querySelectorAll("[data-work-mode]").forEach((button) => button.addEventListener("click", () => setMode(button.dataset.workMode)));
   pane.querySelectorAll("[data-work-kind]").forEach((button) => button.addEventListener("click", () => setKind(button.dataset.workKind)));
   pane.querySelectorAll("[data-mobile-view]").forEach((button) => button.addEventListener("click", () => setMobileView(button.dataset.mobileView)));
@@ -171,51 +144,6 @@
   document.getElementById("workspace-export").addEventListener("click", async (event) => {
     if (dirty || !docId) { event.preventDefault(); if (await save(true) && docId) window.location.assign(`/api/documents/${docId}/export?format=docx`); }
   });
-  pane.querySelectorAll("[data-format]").forEach((button) => button.addEventListener("click", () => {
-    const format = button.dataset.format;
-    if (format === "bold") surround("**");
-    else if (format === "italic") surround("*");
-    else if (format === "strike") surround("~~");
-    else if (format === "underline") surround("++");
-    else if (format.startsWith("align-")) {
-      const align = format.slice(6);
-      const start = content.selectionStart;
-      const end = content.selectionEnd;
-      const selected = content.value.slice(start, end) || "Text";
-      content.setRangeText(`:::${align}\n${selected}\n:::`, start, end, "select");
-      content.focus();
-      markDirty();
-    }
-    else if (format === "heading") surround("## ", "");
-    else if (format === "bullet") surround("- ", "");
-    else if (format === "number") surround("1. ", "");
-    else if (format === "table") { content.setRangeText("| Heading | Heading |\n| --- | --- |\n| Detail | Detail |", content.selectionStart, content.selectionEnd, "end"); content.focus(); markDirty(); }
-    else if (format === "pagebreak") { content.setRangeText("\n\n\\pagebreak\n\n", content.selectionStart, content.selectionEnd, "end"); content.focus(); markDirty(); }
-  }));
-  document.getElementById("workspace-template").addEventListener("change", (event) => {
-    const value = event.target.value;
-    if (!value || !templates[value]) return;
-    if (content.value && !window.confirm("Replace the current content with this template?")) { event.target.value = ""; return; }
-    content.value = templates[value];
-    docFormat = "markdown";
-    event.target.value = "";
-    markDirty();
-  });
-  document.getElementById("workspace-restore").addEventListener("click", async () => {
-    if (!docId || !versionSelect.value) return;
-    if (!window.confirm("Restore this version? The current version will remain in history.")) return;
-    try {
-      const response = await Ultron.api(`/api/documents/${docId}/versions/${versionSelect.value}/restore`, { method: "POST", body: {} });
-      title.value = response.document.title;
-      content.value = response.document.content;
-      docFormat = response.document.format;
-      dirty = false;
-      setStatus("Version restored");
-      countWords();
-      await loadVersions();
-    } catch (error) { Ultron.toast(error.message, "error"); }
-  });
-
   const parseEmailHeaders = (source) => {
     const from = source.match(/^\s*From:\s*(.+)$/im)?.[1]?.trim() || "";
     let subject = source.match(/^\s*Subject:\s*(.+)$/im)?.[1]?.trim() || "";
@@ -312,58 +240,8 @@
     markDirty();
     setKind("document");
   });
-  document.getElementById("workspace-find-button").addEventListener("click", () => {
-    const needle = document.getElementById("workspace-find").value;
-    if (!needle) return;
-    const position = content.value.toLocaleLowerCase().indexOf(needle.toLocaleLowerCase(), content.selectionEnd);
-    if (position < 0) { Ultron.toast("No further match found."); return; }
-    content.focus();
-    content.setSelectionRange(position, position + needle.length);
-  });
-  document.getElementById("workspace-replace-button").addEventListener("click", () => {
-    const needle = document.getElementById("workspace-find").value;
-    if (!needle) return;
-    const next = content.value.replaceAll(needle, document.getElementById("workspace-replace").value);
-    if (next !== content.value) { content.value = next; markDirty(); }
-  });
-  document.getElementById("workspace-delete").addEventListener("click", async () => {
-    if (!docId || !window.confirm("Delete this document and its version history? This cannot be undone.")) return;
-    try {
-      await Ultron.api(`/api/documents/${docId}`, { method: "DELETE" });
-      sessionStorage.removeItem("ultron-active-document");
-      docId = null;
-      title.value = "";
-      content.value = "";
-      dirty = false;
-      close();
-      Ultron.toast("Document deleted.");
-    } catch (error) { Ultron.toast(error.message, "error"); }
-  });
-
   const splitter = document.getElementById("workspace-splitter");
-  splitter.addEventListener("pointerdown", (event) => {
-    if (window.innerWidth <= 900) return;
-    splitter.setPointerCapture(event.pointerId);
-    const move = (pointerEvent) => {
-      const rect = app.getBoundingClientRect();
-      const local = pointerEvent.clientX - rect.left;
-      const railWidth = 0;
-      const available = rect.width - railWidth - 6;
-      const chatWidth = Math.min(Math.max(local - railWidth, 320), available - 380);
-      app.style.gridTemplateColumns = `0 ${chatWidth}px 6px ${available - chatWidth}px`;
-    };
-    const stop = () => { splitter.removeEventListener("pointermove", move); splitter.removeEventListener("pointerup", stop); };
-    splitter.addEventListener("pointermove", move);
-    splitter.addEventListener("pointerup", stop, { once: true });
-  });
-  splitter.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    const rect = app.getBoundingClientRect();
-    const current = app.querySelector(".chat-panel").getBoundingClientRect().width;
-    const next = Math.min(Math.max(current + (event.key === "ArrowRight" ? 24 : -24), 320), rect.width - 386);
-    app.style.gridTemplateColumns = `0 ${next}px 6px ${rect.width - next - 6}px`;
-  });
+  splitter.removeAttribute("tabindex");
   window.addEventListener("resize", () => {
     pane.querySelectorAll("[data-mobile-view]").forEach((button) => button.hidden = window.innerWidth > 900);
     if (window.innerWidth > 900) app.classList.remove("mobile-pane-workspace", "mobile-pane-chat");
@@ -386,10 +264,26 @@
     save,
     setGeneratedContent: async (text, selectionRange = null) => {
       if (!docId) return;
-      const normalized = text.trim().replace(/^```[\w+-]*\s*\n([\s\S]*?)\n```\s*$/, "$1");
-      if (selectionRange && content.value.slice(selectionRange.start, selectionRange.end) === selectionRange.text) {
-        content.setRangeText(normalized, selectionRange.start, selectionRange.end, "end");
-      } else content.value = normalized;
+      const normalized = text.trim()
+        .replace(/^```[\w+-]*\s*\n([\s\S]*?)\n```\s*$/, "$1")
+        .replace(/^(?:(?:okay|sure)[,!]?\s+)?(?:let'?s|here'?s|i'?ve written|i wrote)[^\n]*(?:\n\s*\n|\n)/i, "")
+        .replace(/\n\s*(?:hope you (?:enjoy|like) it|let me know if you(?:'d| would) like[^\n]*|is there anything else[^\n]*|anything else i can help with[^\n]*)[.!?\s]*$/i, "");
+      const start = selectionRange && content.value.slice(selectionRange.start, selectionRange.end) === selectionRange.text
+        ? selectionRange.start : 0;
+      const end = selectionRange && start === selectionRange.start ? selectionRange.end : content.value.length;
+      const prefix = content.value.slice(0, start);
+      const suffix = content.value.slice(end);
+      const delay = Math.min(8, 2400 / Math.max(normalized.length, 1));
+      content.value = prefix + suffix;
+      content.focus();
+      for (let index = 0; index < normalized.length; index += 1) {
+        content.value = prefix + normalized.slice(0, index + 1) + suffix;
+        if (index % 32 === 0 || index === normalized.length - 1) {
+          countWords();
+          content.scrollTop = content.scrollHeight;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, delay));
+      }
       dirty = true;
       countWords();
       setStatus("AI updated document · saving version…");

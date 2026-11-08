@@ -54,17 +54,25 @@
     return (headers && value.length > 70) || (value.length > 100 && greeting && (emailAddress || signoff) && value.includes("?")) || (asksForReply && value.length > 120);
   };
   const emailRevision = (text) => /\b(?:make (?:it )?(?:shorter|longer|more professional|more natural|more polite|less formal|confident)|make it sound (?:more )?(?:natural|professional|confident|polite)|be (?:more )?(?:professional|natural|polite|confident)|decline (?:the )?invitation|accept (?:the )?offer|ask them for more information|revise (?:the )?(?:email|reply)|change the tone|add more detail)\b/i.test(text || "");
+  const startsWritingRequest = (text) => /^\s*(?:(?:please|hey)\s+)*(?:(?:(?:can|could|would|will)\s+you(?:\s+please)?|i need you to|i want you to|i'd like you to|help me(?:\s+to)?|let'?s)\s+)?(?:write|draft|compose|author)\b/i.test(text || "");
+  const explicitWriteRequest = (text) => /^\s*(?:(?:please|hey)\s+)*write\b/i.test(text || "");
   const documentIntent = (text) => {
     const value = text || "";
-    const action = /\b(?:write|draft|create|make|compose|prepare|improve|rewrite|edit|format|turn|add|remove|shorten|expand|fix|organize|build)\b/i.test(value);
+    const action = /\b(?:write|draft|create|make|compose|prepare|improve|rewrite|edit|format|turn|add|remove|delete|change|replace|update|revise|correct|adjust|insert|append|shorten|expand|fix|organize|build)\b/i.test(value);
     const artifact = /\b(?:document|essay|report|speech|study guide|business letter|meeting notes|proposal|memo|article|paragraph|introduction|conclusion|draft|manuscript|poem|poetry|story|blog post|newsletter|resume|cover letter|script|chapter|study notes|guide|letter)\b/i.test(value);
-    const broadWritingRequest = /^\s*(?:please\s+)?(?:write|draft|compose|author)\s+(?:me\s+)?(?:(?:a|an|some)\s+)?(?:\w+\s+){0,2}(?:poem|poetry|story|essay|report|speech|letter|article|script|something|anything|smth)\b/i.test(value)
-      || /^\s*(?:please\s+)?(?:write|draft|compose|author)\s+(?:me\s+)?(?:something|anything|smth)\b/i.test(value);
-    const otherWorkspaceAction = /\b(?:task|calendar|event|reminder|project|python|javascript|typescript|function|class|code|sql|shell script)\b/i.test(value) && /\b(?:add|create|schedule|complete|delete|update|write|make|build)\b/i.test(value);
-    return action && (artifact || broadWritingRequest) && !otherWorkspaceAction;
+    const broadWritingRequest = startsWritingRequest(value) && !/\b(?:email|reply|message|python|javascript|typescript|code|function|class|sql|shell script)\b/i.test(value);
+    const otherWorkspaceAction = /\b(?:calendar|event|reminder|python|javascript|typescript|function|class|code|sql|shell script)\b/i.test(value) && /\b(?:add|create|schedule|complete|delete|update|write|make|build)\b/i.test(value);
+    const explicitDocumentWrite = explicitWriteRequest(value) && artifact && !otherWorkspaceAction;
+    return (action && (artifact || broadWritingRequest) && !otherWorkspaceAction) || explicitDocumentWrite;
   };
-  const documentEdit = (text) => /\b(?:write|draft|create|make|compose|prepare|improve|rewrite|edit|format|turn this into|add|remove|shorten|expand|fix|organize|build)\b/i.test(text || "") && !/\b(?:explain|summarize|review|suggest|check|find)\b/i.test(text || "");
-  const newDocumentRequest = (text) => (/\b(?:write|draft|create|compose|prepare|author)\b/i.test(text || "") || /\bmake\s+(?:me\s+)?(?:a|an|new)\b/i.test(text || "")) && /\b(?:essay|report|speech|study guide|letter|proposal|memo|article|study notes|meeting notes|document|poem|poetry|story|blog post|newsletter|resume|cover letter|script|chapter|guide|something|anything|smth)\b/i.test(text || "") && !/\b(?:this|current|existing|same|the\s+document|introduction|conclusion|paragraph|section|heading)\b/i.test(text || "");
+  const documentEdit = (text) => /\b(?:write|draft|create|make|compose|prepare|improve|rewrite|edit|format|turn this into|add|remove|delete|change|replace|update|revise|correct|adjust|insert|append|shorten|expand|fix|organize|build)\b/i.test(text || "") && !/\b(?:explain|summarize|review|suggest|check|find)\b/i.test(text || "");
+  const newDocumentRequest = (text) => {
+    const value = text || "";
+    const newWritingRequest = startsWritingRequest(value)
+      && !/\b(?:email|reply|message|python|javascript|typescript|code|function|class|sql|shell script)\b/i.test(value);
+    const existingDocumentReference = /\b(?:this|current|existing|same|the\s+document|introduction|conclusion|paragraph|section|heading)\b/i.test(value);
+    return (newWritingRequest || (/\bmake\s+(?:me\s+)?(?:a|an|new)\b/i.test(value) && /\b(?:essay|report|speech|study guide|letter|proposal|memo|article|study notes|meeting notes|document|poem|poetry|story|blog post|newsletter|resume|cover letter|script|chapter|guide|something|anything|smth)\b/i.test(value))) && !existingDocumentReference;
+  };
   const documentTitle = (text) => {
     const cleaned = (text || "").replace(/\s+/g, " ").trim();
     const about = cleaned.match(/\b(?:about|on|titled|called)\s+(.+?)\s*[.!?]*$/i)?.[1];
@@ -184,6 +192,47 @@
       actions.appendChild(regenerateButton);
     }
     message.appendChild(actions);
+  };
+
+  const renderDocumentCard = (message, documentTitle = "Document") => {
+    const documentId = message.dataset.documentId;
+    if (!documentId) return;
+    const body = message.querySelector(".msg__body");
+    body.replaceChildren();
+    body.classList.add("msg__body--file");
+    const card = document.createElement("div");
+    card.className = "msg-file-card";
+    const icon = document.createElement("span");
+    icon.className = "msg-file-card__icon";
+    icon.textContent = "DOC";
+    const name = document.createElement("span");
+    name.className = "msg-file-card__name";
+    name.textContent = `${documentTitle}.docx`;
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "msg-file-card__open";
+    openButton.textContent = "Open";
+    openButton.addEventListener("click", async () => {
+      try { await workspace?.open(documentId, "document"); }
+      catch (error) { Ultron.toast(error.message, "error"); }
+    });
+    const textDownload = document.createElement("a");
+    textDownload.className = "msg-file-card__download";
+    textDownload.href = `/api/documents/${documentId}/export?format=text`;
+    textDownload.download = "";
+    textDownload.textContent = "Download .txt";
+    const wordDownload = document.createElement("a");
+    wordDownload.className = "msg-file-card__download";
+    wordDownload.href = `/api/documents/${documentId}/export?format=docx`;
+    wordDownload.download = "";
+    wordDownload.textContent = "Download .docx";
+    card.append(icon, name, openButton, textDownload, wordDownload);
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("a, button")) return;
+      openButton.click();
+    });
+    body.appendChild(card);
+    message.dataset.documentCard = "1";
   };
 
   const renderAssistant = (message, text) => {
@@ -318,15 +367,19 @@
 
         if (event) {
           if (event.event === "token") {
-            if (event.data.token && target.thinking) {
+            if (pendingDocumentEdit) {
+              received += event.data.token || "";
+            } else if (event.data.token && target.thinking) {
               target.thinking.remove();
               target.thinking = null;
               target.textSpan.hidden = false;
               target.cursor.hidden = false;
             }
-            received += event.data.token || "";
-            target.textSpan.textContent = received;
-            scrollBottom();
+            if (!pendingDocumentEdit) {
+              received += event.data.token || "";
+              target.textSpan.textContent = received;
+              scrollBottom();
+            }
           } else if (event.event === "status") {
             if (target.thinkingLabel) {
               target.thinkingLabel.textContent = event.data.message || "Working with your workspace…";
@@ -347,17 +400,17 @@
             target.thinking?.remove();
             target.thinking = null;
             target.wrap.classList.remove("is-streaming");
-            renderAssistant(target.wrap, received);
+            if (pendingDocumentEdit) {
+              if (workspace) await workspace.setGeneratedContent(received, pendingDocumentRange);
+              renderDocumentCard(target.wrap, event.data.document_title || "Document");
+              pendingDocumentEdit = false;
+              pendingDocumentRange = null;
+            } else renderAssistant(target.wrap, received);
             applyTitle(event.data.title);
             markThreadCurrent();
             if (pendingEmailDraft && emailDraftActive && workspace) {
               workspace.captureEmail(received, emailDraftSource, target.wrap);
               pendingEmailDraft = false;
-            }
-            if (pendingDocumentEdit && workspace) {
-              await workspace.setGeneratedContent(received, pendingDocumentRange);
-              pendingDocumentEdit = false;
-              pendingDocumentRange = null;
             }
           }
         }
@@ -404,7 +457,7 @@
           "Content-Type": "application/json",
           Accept: "text/event-stream",
         },
-        body: JSON.stringify({ ...(content ? { content } : {}), document_id: documentId, document_selection: documentSelection, email_draft: pendingEmailDraft ? (workspace?.getEmailDraft() || "") : "" }),
+        body: JSON.stringify({ ...(content ? { content } : {}), document_id: documentId, document_selection: documentSelection, email_draft: pendingEmailDraft ? (workspace?.getEmailDraft() || "") : "", workspace_only: pendingDocumentEdit }),
       });
 
       if (!response.ok) {
@@ -442,6 +495,8 @@
       }
     } finally {
       activeController = null;
+      pendingDocumentEdit = false;
+      pendingDocumentRange = null;
       setStreaming(false);
       input.focus();
     }
@@ -459,9 +514,22 @@
       return;
     }
 
+    if (/^write[.!]?$/i.test(content)) {
+      try {
+        const result = await Ultron.api("/api/documents", { method: "POST", body: { title: "Untitled document", content: "", format: "markdown" } });
+        input.value = "";
+        autoResize();
+        await workspace?.open(result.document.id, "document");
+        return;
+      } catch (error) {
+        Ultron.toast(`Could not open the document editor: ${error.message}`, "error");
+        return;
+      }
+    }
+
     const incomingEmail = looksLikeEmail(content);
     const revisingEmail = emailDraftActive && emailRevision(content) && !incomingEmail;
-    const documentTask = !incomingEmail && !revisingEmail && (documentIntent(content) || (pendingAttachment && documentEdit(content)) || (workspace?.getDocumentId() && documentEdit(content)));
+    const documentRequest = !incomingEmail && !revisingEmail && (documentIntent(content) || (pendingAttachment && documentEdit(content)) || (workspace?.getDocumentId() && documentEdit(content)));
     let documentId = incomingEmail ? null : (pendingAttachment?.id || null);
     let documentSelection = "";
 
@@ -475,11 +543,12 @@
       emailDraftSource = workspace?.getEmailOriginal() || emailDraftSource;
     }
 
-    if (documentTask && workspace) {
+    if (documentRequest && workspace) {
       try {
-        if (newDocumentRequest(content)) documentId = null;
+        const startsNewDocument = newDocumentRequest(content);
+        if (startsNewDocument) documentId = null;
         else documentId = documentId || workspace.getDocumentId();
-        if (!documentId) {
+        if (!documentId && !startsNewDocument) {
           const rememberedId = Number(sessionStorage.getItem("ultron-active-document") || 0);
           if (rememberedId && (documentIntent(content) || documentEdit(content))) documentId = rememberedId;
         }
@@ -490,7 +559,7 @@
           documentId = created.document.id;
           await workspace.open(documentId, "document");
         }
-        pendingDocumentEdit = documentEdit(content);
+        pendingDocumentEdit = true;
         pendingDocumentRange = workspace.getSelectionRange();
         documentSelection = workspace.getSelection();
       } catch (error) {
@@ -512,6 +581,8 @@
         window.location.href = `/chat/${created.id}?${query}`;
       } catch (error) {
         sendBtn.disabled = false;
+        pendingDocumentEdit = false;
+        pendingDocumentRange = null;
         Ultron.toast(error.message, "error");
       }
       return;
@@ -690,6 +761,11 @@
   messagesEl.querySelectorAll(".msg--assistant:not(.msg--error)").forEach((message) => {
     const body = message.querySelector(".msg__body");
     const raw = body.textContent;
+    if (raw.trim() === "Document ready." && message.dataset.documentId) {
+      const title = (message.dataset.documentTitle || "Document").replace(/\.(?:docx?|txt|md|markdown)$/i, "");
+      renderDocumentCard(message, title);
+      return;
+    }
     body.dataset.rawText = raw;
     window.UltronMarkdown.render(body, raw);
     addMessageActions(message);
@@ -737,7 +813,7 @@
         workspace?.prepareEmail(lastText);
       }
       const docId = Number(documentParam || 0) || null;
-      pendingDocumentEdit = Boolean(docId && documentEdit(lastText));
+      pendingDocumentEdit = Boolean(docId && (documentIntent(lastText) || documentEdit(lastText)));
       (async () => {
         if (docId) await workspace?.open(docId, "document");
         await startStream(null, docId, "");

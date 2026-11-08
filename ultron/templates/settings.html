@@ -88,11 +88,6 @@
         <input class="switch-input" type="checkbox" id="web_search_enabled" name="web_search_enabled" value="1"{% if settings.web_search_enabled == '1' %} checked{% endif %}>
       </label>
       <div class="field" style="margin-top: 12px;">
-        <label for="task_reminder_time">Task reminders</label>
-        <input type="time" id="task_reminder_time" name="task_reminder_time" value="{{ settings.task_reminder_time or '09:00' }}">
-        <span class="label-optional">Notify on the due date at this local time.</span>
-      </div>
-      <div class="field" style="margin-top: 12px;">
         <label for="event_reminder_minutes">Calendar reminders</label>
         <select id="event_reminder_minutes" name="event_reminder_minutes">
           {% for minutes in [0, 5, 10, 15, 30, 60] %}
@@ -167,7 +162,7 @@
         <input class="switch-input" type="checkbox" id="automatic_learning" name="automatic_learning" value="1"{% if settings.automatic_learning == '1' %} checked{% endif %}>
       </label>
       <label class="switch-row" for="memory_auto_extract">
-        <span class="switch-row__copy"><span class="switch-row__title">Suggest memories from conversations</span><span class="switch-row__desc">Only explicit preferences, reusable instructions, and ongoing project statements are suggested; suggestions stay inactive until approved.</span></span>
+        <span class="switch-row__copy"><span class="switch-row__title">Suggest memories from conversations</span><span class="switch-row__desc">Only explicit preferences, reusable instructions, and ongoing-work statements are suggested; suggestions stay inactive until approved.</span></span>
         <input class="switch-input" type="checkbox" id="memory_auto_extract" name="memory_auto_extract" value="1"{% if settings.memory_auto_extract == '1' %} checked{% endif %}>
       </label>
     </section>
@@ -187,7 +182,6 @@
       <div class="data-grid">
         <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.documents) }}</span><span class="data-stat__label">DOCUMENTS</span></div>
         <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.events) }}</span><span class="data-stat__label">EVENTS</span></div>
-        <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.tasks) }}</span><span class="data-stat__label">TASKS</span></div>
         <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.memories) }}</span><span class="data-stat__label">MEMORIES</span></div>
         <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.conversations) }}</span><span class="data-stat__label">THREADS</span></div>
         <div class="data-stat"><span class="data-stat__value">{{ "%02d"|format(counts.messages) }}</span><span class="data-stat__label">MESSAGES</span></div>

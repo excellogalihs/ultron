@@ -2,13 +2,13 @@
 {% from "components/icons.html" import icon %}
 
 {% block content %}
-<section class="page-head"><div><span class="label label--muted">WORKSPACE / ROUTINES</span><h1 class="page-head__title">Automations<span class="accent">.</span></h1><p class="page-head__desc">Schedule local summaries for your calendar, tasks, and productivity.</p></div></section>
-<div class="memory-layout">
+<section class="page-head"><div><span class="label label--muted">WORKSPACE / ROUTINES</span><h1 class="page-head__title">Automations<span class="accent">.</span></h1><p class="page-head__desc">Schedule local summaries for your calendar.</p></div></section>
+<div class="automation-layout">
   <section class="panel memory-add">
     <div class="panel__head"><div class="panel__title">{{ icon('plus', 15) }}<span>New automation</span></div></div>
     <form id="automation-form">
       <div class="field"><label for="automation-name">Name</label><input id="automation-name" maxlength="120" required placeholder="Morning plan"></div>
-      <div class="field"><label for="automation-instruction">What should ultron summarize?</label><textarea id="automation-instruction" rows="3" maxlength="2000" required placeholder="Show me today's schedule and unfinished tasks"></textarea><span class="field__hint">Supported: calendar events, tasks, deadlines, completed tasks, and productivity summaries.</span></div>
+      <div class="field"><label for="automation-instruction">What should ultron summarize?</label><textarea id="automation-instruction" rows="3" maxlength="2000" required placeholder="Show me today's schedule"></textarea><span class="field__hint">Supported: calendar events and schedules.</span></div>
       <div class="field"><label for="automation-type">Schedule</label><select id="automation-type"><option value="once">One time</option><option value="daily" selected>Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="custom">Custom interval</option></select></div>
       <div class="field" id="schedule-time-field"><label for="automation-time">Local time</label><input id="automation-time" type="time" value="09:00"></div>
       <div class="field" id="schedule-at-field" hidden><label for="automation-at">Date and time</label><input id="automation-at" type="datetime-local"></div>
@@ -19,17 +19,17 @@
       <button class="btn btn--primary btn--block" type="submit" id="automation-submit">Save automation</button>
     </form>
   </section>
-  <section class="memory-list" id="automation-list">
+  <section class="automation-list" id="automation-list" aria-label="Saved automations">
     {% for item in automations %}
-    <article class="panel memory-card" data-automation-id="{{ item.id }}">
+    <article class="panel memory-card automation-card" data-automation-id="{{ item.id }}">
       <div class="memory-card__head"><span class="tag tag--accent">{{ item.schedule_type|upper }}</span><span class="tag">{{ 'ACTIVE' if item.enabled else 'PAUSED' }}</span></div>
       <h2>{{ item.name }}</h2><p class="memory-card__content">{{ item.instruction }}</p>
-      <div class="memory-card__foot"><span>Next (UTC): {{ item.next_run_at or '—' }} · {{ item.timezone }}</span><div class="memory-card__actions"><button class="btn btn--small" type="button" data-edit data-name="{{ item.name }}" data-instruction="{{ item.instruction }}">Edit</button><button class="btn btn--small" type="button" data-run>Run now</button><button class="btn btn--small" type="button" data-toggle>{{ 'Pause' if item.enabled else 'Enable' }}</button><button class="icon-btn icon-btn--danger" type="button" data-delete aria-label="Delete automation">{{ icon('trash', 15) }}</button></div></div>
+      <div class="automation-card__foot"><span class="automation-card__schedule">Next run · {{ item.next_run_at or 'Not scheduled' }} UTC <span>{{ item.timezone }}</span></span><div class="memory-card__actions"><button class="btn btn--small" type="button" data-edit data-name="{{ item.name }}" data-instruction="{{ item.instruction }}">Edit</button><button class="btn btn--small" type="button" data-run>Run now</button><button class="btn btn--small" type="button" data-toggle>{{ 'Pause' if item.enabled else 'Enable' }}</button><button class="icon-btn icon-btn--danger" type="button" data-delete aria-label="Delete automation">{{ icon('trash', 15) }}</button></div></div>
     </article>
-    {% else %}<div class="panel memory-empty"><p>No automations yet. Create a local task or calendar summary above.</p></div>{% endfor %}
+    {% else %}<div class="panel automation-empty"><span class="automation-empty__mark" aria-hidden="true">✳</span><p>No automations yet</p><span>Create a local calendar summary above to get started.</span></div>{% endfor %}
   </section>
 </div>
-<section class="panel" style="margin-top:1.5rem"><div class="panel__head"><div class="panel__title"><span>Execution history</span></div></div>
-{% for run in runs %}<div class="memory-card__foot"><span><strong>{{ run.automation_name }}</strong> · {{ run.trigger_type }} · {{ run.started_at }}</span><span class="tag{% if run.status == 'failed' %} tag--danger{% endif %}">{{ run.status|upper }}</span></div>{% if run.error %}<p>{{ run.error }}</p>{% elif run.result %}<p>{{ run.result }}</p>{% endif %}{% else %}<p>No executions yet.</p>{% endfor %}</section>
+<section class="panel automation-history"><div class="panel__head"><div class="panel__title"><span>Execution history</span></div></div>
+{% for run in runs %}<article class="automation-run"><div class="automation-run__head"><div><strong>{{ run.automation_name }}</strong><span>{{ run.trigger_type|replace('_', ' ')|title }} · {{ run.started_at }}</span></div><span class="tag{% if run.status == 'failed' %} tag--danger{% endif %}">{{ run.status|upper }}</span></div>{% if run.error %}<p class="automation-run__result automation-run__result--error">{{ run.error }}</p>{% elif run.result %}<p class="automation-run__result">{{ run.result }}</p>{% endif %}</article>{% else %}<p class="automation-history__empty">No executions yet.</p>{% endfor %}</section>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='js/automations.js') }}" defer></script>{% endblock %}
