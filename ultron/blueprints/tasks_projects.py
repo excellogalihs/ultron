@@ -113,7 +113,6 @@ def get_project(item_id):
     item=dict(row); item["tasks"]=[dict(r) for r in db.execute("SELECT * FROM tasks WHERE project_id=? ORDER BY id DESC",(item_id,)).fetchall()]
     item["documents"]=[dict(r) for r in db.execute("SELECT d.id,d.title FROM project_documents p JOIN documents d ON d.id=p.document_id WHERE p.project_id=?",(item_id,)).fetchall()]
     item["conversations"]=[dict(r) for r in db.execute("SELECT c.id,c.title FROM project_conversations p JOIN conversations c ON c.id=p.conversation_id WHERE p.project_id=?",(item_id,)).fetchall()]
-    item["knowledge_files"]=[dict(r) for r in db.execute("SELECT k.id,k.title FROM project_knowledge_files p JOIN knowledge_files k ON k.id=p.knowledge_file_id WHERE p.project_id=?",(item_id,)).fetchall()]
     return jsonify(project=item)
 
 
@@ -141,7 +140,7 @@ def delete_project(item_id):
 @bp.post("/api/projects/<int:item_id>/links")
 def link_project(item_id):
     db=get_db(); data=request.get_json(silent=True) or {}; kind=data.get("type"); linked_id=data.get("id")
-    tables={"document":("project_documents","document_id","documents"),"conversation":("project_conversations","conversation_id","conversations"),"knowledge":("project_knowledge_files","knowledge_file_id","knowledge_files")}
+    tables={"document":("project_documents","document_id","documents"),"conversation":("project_conversations","conversation_id","conversations")}
     if kind not in tables or not isinstance(linked_id,int):return jsonify(error="Invalid project link."),400
     table,column,target=tables[kind]
     if not db.execute("SELECT 1 FROM projects WHERE id=?",(item_id,)).fetchone():return jsonify(error="Project not found."),404
@@ -151,6 +150,6 @@ def link_project(item_id):
 
 @bp.delete("/api/projects/<int:item_id>/links/<kind>/<int:linked_id>")
 def unlink_project(item_id,kind,linked_id):
-    tables={"document":("project_documents","document_id"),"conversation":("project_conversations","conversation_id"),"knowledge":("project_knowledge_files","knowledge_file_id")}
+    tables={"document":("project_documents","document_id"),"conversation":("project_conversations","conversation_id")}
     if kind not in tables:return jsonify(error="Invalid project link."),400
     table,column=tables[kind]; db=get_db(); db.execute(f"DELETE FROM {table} WHERE project_id=? AND {column}=?",(item_id,linked_id)); db.commit(); return jsonify(ok=True)

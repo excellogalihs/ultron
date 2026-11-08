@@ -11,7 +11,6 @@ SEARCH_TYPES = {
     "conversations": ("conversation", "Conversation"),
     "calendar": ("event", "Calendar"),
     "memories": ("memory", "Memory"),
-    "knowledge": ("knowledge", "Knowledge"),
 }
 
 
@@ -82,8 +81,6 @@ def search_workspace(db, query, types=None, limit=40):
             sources.append(("event", "SELECT 'event', id, title, description, start_at FROM events"))
         if "memories" in requested:
             sources.append(("memory", "SELECT 'memory', id, category, content, updated_at FROM memories"))
-        if "knowledge" in requested:
-            sources.append(("knowledge", "SELECT 'knowledge', id, title, substr(content,1,1200), imported_at FROM knowledge_files"))
         for source, sql in sources:
             rows = db.execute(f"{sql} WHERE {like} ORDER BY 5 DESC LIMIT ?", (*query_params, limit)).fetchall()
             for row in rows:
@@ -142,11 +139,6 @@ def _resolve(db, source, item_id, title, content):
         if not row: return None
         href, updated = f"/memory#memory-{item_id}", row["updated_at"]
         metadata = {"active": bool(row["active"]), "approved": bool(row["approved"])}
-    elif source == "knowledge":
-        row = db.execute("SELECT updated_at,status,file_type FROM knowledge_files WHERE id=?", (item_id,)).fetchone()
-        if not row: return None
-        href, updated = f"/knowledge?file={item_id}", row["updated_at"]
-        metadata = {"status": row["status"], "file_type": row["file_type"]}
     else:
         return None
     label = next((label for _, (kind, label) in SEARCH_TYPES.items() if kind == source), source.title())
@@ -166,8 +158,6 @@ def retrieve_context(db, query, max_items=6, max_characters=5000, include_memori
             not item["metadata"].get("active") or not item["metadata"].get("approved")
         ):
             continue
-        if item["type"] == "knowledge" and item["metadata"].get("status") != "indexed":
-            continue
         content = item["snippet"]
         if total + len(content) > max_characters:
             content = content[: max(0, max_characters - total)]
@@ -185,13 +175,12 @@ def retrieve_context(db, query, max_items=6, max_characters=5000, include_memori
             "SELECT 'document' AS source,id,title,substr(content,1,1200),updated_at FROM documents WHERE updated_at>=? "
             "UNION ALL SELECT 'conversation',c.id,c.title,substr(COALESCE((SELECT m.content FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1),''),1,1200),c.updated_at FROM conversations c WHERE c.updated_at>=? "
             "UNION ALL SELECT 'event',id,title,substr(description,1,1200),created_at FROM events WHERE created_at>=? "
-            "UNION ALL SELECT 'knowledge',id,title,substr(content,1,1200),imported_at FROM knowledge_files WHERE imported_at>=? "
-            "ORDER BY 5 DESC LIMIT 16", (cutoff, cutoff, cutoff, cutoff)
+            "ORDER BY 5 DESC LIMIT 16", (cutoff, cutoff, cutoff)
         ).fetchall()
         for row in recent_rows:
             item = _resolve(db, row["source"], row["id"], row["title"], row["content"])
             key = (item["type"], item["id"]) if item else None
-            if item and not (item["type"] == "knowledge" and item["metadata"].get("status") != "indexed") and key not in seen and total < max_characters:
+            if item and key not in seen and total < max_characters:
                 selected.append(item)
                 seen.add(key)
                 total += len(item["snippet"])

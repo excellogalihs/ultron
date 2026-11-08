@@ -124,34 +124,6 @@ CREATE TABLE IF NOT EXISTS project_conversations (
     PRIMARY KEY (project_id, conversation_id)
 );
 
-CREATE TABLE IF NOT EXISTS knowledge_collections (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS knowledge_files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    collection_id INTEGER REFERENCES knowledge_collections(id) ON DELETE SET NULL,
-    filename TEXT NOT NULL,
-    title TEXT NOT NULL,
-    file_type TEXT NOT NULL,
-    content TEXT NOT NULL DEFAULT '',
-    content_hash TEXT NOT NULL UNIQUE,
-    status TEXT NOT NULL DEFAULT 'indexed' CHECK (status IN ('indexed', 'error')),
-    imported_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_knowledge_collection ON knowledge_files (collection_id, imported_at DESC);
-
-CREATE TABLE IF NOT EXISTS project_knowledge_files (
-    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    knowledge_file_id INTEGER NOT NULL REFERENCES knowledge_files(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (project_id, knowledge_file_id)
-);
-
 CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_type TEXT NOT NULL CHECK (source_type IN ('task', 'event')),

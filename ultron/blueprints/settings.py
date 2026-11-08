@@ -48,11 +48,8 @@ TABLES = (
     "automations",
     "automation_runs",
     "local_notifications",
-    "knowledge_collections",
-    "knowledge_files",
     "project_documents",
     "project_conversations",
-    "project_knowledge_files",
 )
 
 
@@ -231,7 +228,7 @@ def export_data():
         "data": {},
     }
     for table in TABLES:
-        order = "" if table in ("project_documents", "project_conversations", "project_knowledge_files") else " ORDER BY id ASC"
+        order = "" if table in ("project_documents", "project_conversations") else " ORDER BY id ASC"
         rows = db.execute(f"SELECT * FROM {table}{order}").fetchall()
         payload["data"][table] = [dict(row) for row in rows]
 

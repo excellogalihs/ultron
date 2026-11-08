@@ -28,7 +28,6 @@ A local-first AI workspace built for low-end computers. ultron is a lightweight 
   - **Import**: Upload text, Markdown, JSON, CSV, or code files directly into your workspace.
   - **Export**: Export individual documents as `.md`/`.txt`, or export all documents in structured JSON.
   - **AI Writing Panel**: Streams suggestions for selected text or whole documents with one-click Accept/Reject.
-- **Knowledge Base** — import PDF, DOCX, TXT, and Markdown references, organize collections, preview extracted text, and search locally. PDF extraction uses `pypdf` with a `pdftotext` fallback; duplicate file contents are detected by SHA-256.
 - **Workspace Search & Context** — FTS5 indexes workspace titles and text when SQLite supports it, with bounded LIKE fallback. Chat retrieves a small, relevance-ranked set of local excerpts and cites the source instead of sending the full database to Ollama.
 - **Calendar** — monthly, weekly, and daily views with local event creation, editing, deletion, descriptions, times, categories, upcoming/today dashboard sections, and event reminders.
 - **Memory** — store facts/preferences, edit and delete them, and toggle their use. Clear durable statements from conversations are saved automatically as active notes; a bounded, importance-and-relevance-ranked profile is included in AI context for every conversation, so a preference stated earlier is available later even when the wording is different.
@@ -134,7 +133,6 @@ ultron/
 | Chat | `POST /chat/new`, `GET/POST /api/conversations`, `PATCH/DELETE /api/conversations/<id>`, `POST /api/conversations/<id>/stream` (SSE) |
 | Documents | `GET/POST /api/documents`, `GET/PATCH/DELETE /api/documents/<id>`, `POST /api/documents/import`, `GET /api/documents/<id>/export`, `GET /api/documents/<id>/versions`, version restore, and `GET /api/documents/export-all` |
 | Search | `GET /search`, `GET /api/search?q=...&type=...` |
-| Knowledge | `GET /knowledge`, `POST /api/knowledge/import`, `GET/DELETE /api/knowledge/<id>`, collection APIs |
 | Calendar | `GET/POST /api/events`, `GET/PATCH/DELETE /api/events/<id>` |
 | Memory | `GET/POST /api/memories`, `PATCH/DELETE /api/memories/<id>` |
 | Engine | `GET /api/ollama/status?url=...` |

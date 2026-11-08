@@ -1,8 +1,6 @@
 """Small, local helpers for importing and exporting text-oriented documents."""
 
 from io import BytesIO
-import subprocess
-import shutil
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
@@ -114,35 +112,6 @@ def read_document(filename, payload):
                 pieces.append("\n")
         paragraphs.append("".join(pieces))
     return "\n".join(paragraphs)
-
-
-def read_knowledge_file(filename, payload):
-    """Extract plain text from a supported knowledge file without model use."""
-    extension = Path(filename).suffix.lower()
-    if extension == ".pdf":
-        try:
-            from pypdf import PdfReader
-            reader = PdfReader(BytesIO(payload), strict=False)
-            if len(reader.pages) > 500:
-                raise ValueError("PDF imports are limited to 500 pages.")
-            return "\n\n".join((page.extract_text() or "") for page in reader.pages)
-        except ImportError:
-            extractor = shutil.which("pdftotext")
-            if not extractor:
-                raise ValueError("PDF extraction needs pypdf installed or pdftotext available.")
-            try:
-                result = subprocess.run(
-                    [extractor, "-f", "1", "-l", "500", "-", "-"], input=payload, stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE, timeout=20, check=False,
-                )
-            except (OSError, subprocess.TimeoutExpired) as error:
-                raise ValueError("PDF text extraction failed or timed out.") from error
-            if result.returncode:
-                raise ValueError("This PDF could not be read.")
-            return result.stdout.decode("utf-8", "replace")
-        except Exception as error:
-            raise ValueError("This PDF could not be read or contains no extractable text.") from error
-    return read_document(filename, payload)
 
 
 def make_docx(content):

@@ -54,24 +54,26 @@
     return (headers && value.length > 70) || (value.length > 100 && greeting && (emailAddress || signoff) && value.includes("?")) || (asksForReply && value.length > 120);
   };
   const emailRevision = (text) => /\b(?:make (?:it )?(?:shorter|longer|more professional|more natural|more polite|less formal|confident)|make it sound (?:more )?(?:natural|professional|confident|polite)|be (?:more )?(?:professional|natural|polite|confident)|decline (?:the )?invitation|accept (?:the )?offer|ask them for more information|revise (?:the )?(?:email|reply)|change the tone|add more detail)\b/i.test(text || "");
-  const startsWritingRequest = (text) => /^\s*(?:(?:please|hey)\s+)*(?:(?:(?:can|could|would|will)\s+you(?:\s+please)?|i need you to|i want you to|i'd like you to|help me(?:\s+to)?|let'?s)\s+)?(?:write|draft|compose|author)\b/i.test(text || "");
+  const startsWritingRequest = (text) => /^\s*(?:(?:please|hey)\s+)*(?:(?:(?:can|could|would|will)\s+you(?:\s+(?:please|just))?|i\s+(?:need|want)\s+(?:you\s+to|to)|i(?:'d|\s+would)\s+like\s+(?:you\s+to|to)|help me(?:\s+to)?|let'?s)\s+)?(?:just\s+)?(?:write|draft|compose|author)\b/i.test(text || "");
   const explicitWriteRequest = (text) => /^\s*(?:(?:please|hey)\s+)*write\b/i.test(text || "");
   const documentIntent = (text) => {
     const value = text || "";
     const action = /\b(?:write|draft|create|make|compose|prepare|improve|rewrite|edit|format|turn|add|remove|delete|change|replace|update|revise|correct|adjust|insert|append|shorten|expand|fix|organize|build)\b/i.test(value);
     const artifact = /\b(?:document|essay|report|speech|study guide|business letter|meeting notes|proposal|memo|article|paragraph|introduction|conclusion|draft|manuscript|poem|poetry|story|blog post|newsletter|resume|cover letter|script|chapter|study notes|guide|letter)\b/i.test(value);
     const broadWritingRequest = startsWritingRequest(value) && !/\b(?:email|reply|message|python|javascript|typescript|code|function|class|sql|shell script)\b/i.test(value);
+    const artifactPrompt = /^\s*(?:(?:please|hey)\s+)*(?:a|an|the)?\s*(?:poem|poetry|essay|report|story|speech|article|letter|proposal|memo|newsletter|resume|script|chapter|study guide|meeting notes)\b/i.test(value);
     const otherWorkspaceAction = /\b(?:calendar|event|reminder|python|javascript|typescript|function|class|code|sql|shell script)\b/i.test(value) && /\b(?:add|create|schedule|complete|delete|update|write|make|build)\b/i.test(value);
     const explicitDocumentWrite = explicitWriteRequest(value) && artifact && !otherWorkspaceAction;
-    return (action && (artifact || broadWritingRequest) && !otherWorkspaceAction) || explicitDocumentWrite;
+    return ((action && (artifact || broadWritingRequest) || artifactPrompt) && !otherWorkspaceAction) || explicitDocumentWrite;
   };
   const documentEdit = (text) => /\b(?:write|draft|create|make|compose|prepare|improve|rewrite|edit|format|turn this into|add|remove|delete|change|replace|update|revise|correct|adjust|insert|append|shorten|expand|fix|organize|build)\b/i.test(text || "") && !/\b(?:explain|summarize|review|suggest|check|find)\b/i.test(text || "");
   const newDocumentRequest = (text) => {
     const value = text || "";
     const newWritingRequest = startsWritingRequest(value)
       && !/\b(?:email|reply|message|python|javascript|typescript|code|function|class|sql|shell script)\b/i.test(value);
+    const startsWithArtifact = /^\s*(?:(?:please|hey)\s+)*(?:a|an|the)?\s*(?:poem|poetry|essay|report|story|speech|article|letter|proposal|memo|newsletter|resume|script|chapter|study guide|meeting notes)\b/i.test(value);
     const existingDocumentReference = /\b(?:this|current|existing|same|the\s+document|introduction|conclusion|paragraph|section|heading)\b/i.test(value);
-    return (newWritingRequest || (/\bmake\s+(?:me\s+)?(?:a|an|new)\b/i.test(value) && /\b(?:essay|report|speech|study guide|letter|proposal|memo|article|study notes|meeting notes|document|poem|poetry|story|blog post|newsletter|resume|cover letter|script|chapter|guide|something|anything|smth)\b/i.test(value))) && !existingDocumentReference;
+    return (newWritingRequest || startsWithArtifact || (/\bmake\s+(?:me\s+)?(?:a|an|new)\b/i.test(value) && /\b(?:essay|report|speech|study guide|letter|proposal|memo|article|study notes|meeting notes|document|poem|poetry|story|blog post|newsletter|resume|cover letter|script|chapter|guide|something|anything|smth)\b/i.test(value))) && !existingDocumentReference;
   };
   const documentTitle = (text) => {
     const cleaned = (text || "").replace(/\s+/g, " ").trim();
@@ -401,6 +403,7 @@
             target.thinking = null;
             target.wrap.classList.remove("is-streaming");
             if (pendingDocumentEdit) {
+              received = received.replace(/^\s*(?:okay[,!]?\s*)?(?:here(?:'s| is)\s+(?:the|your)\s+(?:poem|essay|report|story|document|draft|letter|article|speech|piece)\s*[:.!\-]*\s*)/i, "");
               if (workspace) await workspace.setGeneratedContent(received, pendingDocumentRange);
               renderDocumentCard(target.wrap, event.data.document_title || "Document");
               pendingDocumentEdit = false;
@@ -527,9 +530,10 @@
       }
     }
 
-    const incomingEmail = looksLikeEmail(content);
-    const revisingEmail = emailDraftActive && emailRevision(content) && !incomingEmail;
-    const documentRequest = !incomingEmail && !revisingEmail && (documentIntent(content) || (pendingAttachment && documentEdit(content)) || (workspace?.getDocumentId() && documentEdit(content)));
+    const writeTrigger = /\bwrite\b/i.test(content);
+    const incomingEmail = !writeTrigger && looksLikeEmail(content);
+    const revisingEmail = !writeTrigger && emailDraftActive && emailRevision(content) && !incomingEmail;
+    const documentRequest = writeTrigger || (!incomingEmail && !revisingEmail && (documentIntent(content) || (pendingAttachment && documentEdit(content)) || (workspace?.getDocumentId() && documentEdit(content))));
     let documentId = incomingEmail ? null : (pendingAttachment?.id || null);
     let documentSelection = "";
 
@@ -806,7 +810,7 @@
     const last = allMessages[allMessages.length - 1];
     if (last && last.classList.contains("msg--user")) {
       const lastText = last.querySelector(".msg__body")?.textContent || "";
-      if (params.get("email") === "1" || looksLikeEmail(lastText)) {
+      if (params.get("email") === "1" || (!/\bwrite\b/i.test(lastText) && looksLikeEmail(lastText))) {
         emailDraftActive = true;
         pendingEmailDraft = true;
         emailDraftSource = lastText;

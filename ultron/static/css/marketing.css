@@ -15,14 +15,13 @@
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.orbit--two{animation:none}.button,.feature{transition:none}}
 .mini-mark .logo-mark{width:18px;height:18px;--logo-core:var(--text)}.local-band__glyph{display:grid;place-items:center;text-shadow:none}.local-band__glyph .logo-mark{width:104px;height:104px;color:var(--accent);--logo-core:var(--text)}
 /* Product capability cards */
-.automation-art,.knowledge-art,.memory-art{background:radial-gradient(ellipse at 50% 100%,#8c7cf116,transparent 65%),linear-gradient(145deg,#11111a,#09090f)}
-.automation-preview,.knowledge-preview,.memory-preview{position:relative;z-index:1;display:flex;flex-direction:column;width:76%;max-width:280px;padding:17px;border:1px solid #514a70;background:#0d0d15;box-shadow:0 10px 35px #0007;color:#e9e5ff}
-.automation-preview small,.knowledge-preview small,.memory-preview small{margin-bottom:15px;color:#8d88a4;font-size:6px;letter-spacing:.13em}
-.automation-preview strong,.knowledge-preview b{font-size:9px;font-weight:500}
-.automation-preview>span,.knowledge-preview>span{margin-top:5px;color:#8d8a9d;font-size:7px}
+.automation-art,.memory-art{background:radial-gradient(ellipse at 50% 100%,#8c7cf116,transparent 65%),linear-gradient(145deg,#11111a,#09090f)}
+.automation-preview,.memory-preview{position:relative;z-index:1;display:flex;flex-direction:column;width:76%;max-width:280px;padding:17px;border:1px solid #514a70;background:#0d0d15;box-shadow:0 10px 35px #0007;color:#e9e5ff}
+.automation-preview small,.memory-preview small{margin-bottom:15px;color:#8d88a4;font-size:6px;letter-spacing:.13em}
+.automation-preview strong{font-size:9px;font-weight:500}
+.automation-preview>span{margin-top:5px;color:#8d8a9d;font-size:7px}
 .automation-preview>b{display:flex;align-items:center;gap:7px;margin-top:15px;color:#aa9cff;font-size:6px;letter-spacing:.1em}
 .automation-preview>b i{width:5px;height:5px;border-radius:50%;background:#64c99c;box-shadow:0 0 8px #64c99c}
-.knowledge-preview b:not(:first-of-type){margin-top:15px}
 .memory-preview{align-items:flex-start;width:auto;min-width:190px}
 .memory-preview>span{position:absolute;top:12px;right:14px;color:#aa9cff;font-size:17px}
 .memory-preview strong{font-size:12px;line-height:1.6;font-weight:500}

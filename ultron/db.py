@@ -85,11 +85,13 @@ def _setup_workspace_fts(db):
         return
 
     trigger_names = [
-        *(f"fts_{table}_{action}" for table in ("document_folders", "documents", "tasks", "events", "memories", "knowledge_files", "projects") for action in ("insert", "delete", "update")),
+        *(f"fts_{table}_{action}" for table in ("document_folders", "documents", "tasks", "events", "memories", "projects") for action in ("insert", "delete", "update")),
+        *(f"fts_knowledge_files_{action}" for action in ("insert", "delete", "update")),
         "fts_messages_insert", "fts_messages_delete", "fts_messages_update", "fts_conversations_title",
     ]
     for trigger in trigger_names:
         db.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+    db.execute("DELETE FROM workspace_fts WHERE source='knowledge'")
     if rebuild and fts_exists:
         db.execute("DELETE FROM workspace_fts")
 
@@ -99,7 +101,6 @@ def _setup_workspace_fts(db):
         "tasks": ("task", "id", "title", "notes", 3_000_000_000),
         "events": ("event", "id", "title", "description", 4_000_000_000),
         "memories": ("memory", "id", "category", "content", 5_000_000_000),
-        "knowledge_files": ("knowledge", "id", "title", "content", 6_000_000_000),
         "projects": ("project", "id", "name", "description || ' ' || notes", 7_000_000_000),
     }
     for table, (source, id_column, title_expr, content_expr, rowid_offset) in sources.items():
