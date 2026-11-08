@@ -10,6 +10,7 @@ from pathlib import Path
 from ..constants import EVENT_CATEGORIES, MEMORY_CATEGORIES
 from ..helpers import now_str
 from . import web_search
+from .memory import relevant_memories, save_memory as save_memory_entry
 
 MAX_TOOL_CALLS = 8
 MAX_TOOL_RESULT_LENGTH = 12000
@@ -22,10 +23,6 @@ WORKSPACE_IGNORED_DIRECTORIES = frozenset(
     {".git", ".venv", "node_modules", "__pycache__", "instance", "build", "dist"}
 )
 DEFAULT_WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
-
-_STOP_WORDS = frozenset(
-    "a an and are as at be by can do for from how i in is it me my of on or our please the this to we what when where which who with you your".split()
-)
 
 
 class ToolError(ValueError):
@@ -87,46 +84,6 @@ def _time(value, label, fallback=None):
 
 def _row_dict(row):
     return dict(row) if row is not None else None
-
-
-def _keywords(text):
-    return {
-        word
-        for word in re.findall(r"[a-z0-9]{2,}", (text or "").casefold())
-        if word not in _STOP_WORDS
-    }
-
-
-def relevant_memories(db, query, limit=5, max_characters=2800):
-    """Return a small keyword-ranked subset, never the full memory table."""
-    terms = _keywords(query)
-    if not terms:
-        return []
-
-    rows = db.execute(
-        "SELECT content, category, updated_at FROM memories "
-        "WHERE active = 1 ORDER BY updated_at DESC, id DESC LIMIT 150"
-    ).fetchall()
-    ranked = []
-    for row in rows:
-        content_terms = _keywords(row["content"])
-        overlap = terms & content_terms
-        if overlap:
-            ranked.append((len(overlap), row["updated_at"], row))
-
-    ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    selected = []
-    used = 0
-    for _, _, row in ranked:
-        entry = {"content": row["content"], "category": row["category"]}
-        cost = len(entry["content"]) + len(entry["category"]) + 8
-        if used + cost > max_characters:
-            continue
-        selected.append(entry)
-        used += cost
-        if len(selected) >= limit:
-            break
-    return selected
 
 
 def _search_workspace(db, arguments, workspace_root):
@@ -357,20 +314,15 @@ def _save_memory(db, arguments):
     content = _text(args["content"], "Memory", 2000, required=True)
     category = args.get("category", "general")
     if category not in MEMORY_CATEGORIES:
-        raise ToolError("Memory category must be general, fact, preference, or project.")
-    existing = db.execute(
-        "SELECT * FROM memories WHERE content = ? COLLATE NOCASE AND category = ? LIMIT 1",
-        (content, category),
-    ).fetchone()
-    if existing is not None:
-        return {"saved": False, "memory": _row_dict(existing), "reason": "already_saved"}
-    timestamp = now_str()
-    cursor = db.execute(
-        """INSERT INTO memories (content, category, active, created_at, updated_at)
-           VALUES (?, ?, 1, ?, ?)""",
-        (content, category, timestamp, timestamp),
-    )
-    return {"saved": True, "memory": _row_dict(db.execute("SELECT * FROM memories WHERE id = ?", (cursor.lastrowid,)).fetchone())}
+        raise ToolError(
+            "Memory category must be one of: " + ", ".join(MEMORY_CATEGORIES) + "."
+        )
+    result = save_memory_entry(db, content, category, approved=True, source="tool")
+    if not result.get("saved") and result.get("reason") == "sensitive":
+        raise ToolError("Memory was not saved because it appears to contain a secret or credential.")
+    if result.get("reason") == "already_saved":
+        result["note"] = "This note is already stored in long-term memory."
+    return result
 
 
 

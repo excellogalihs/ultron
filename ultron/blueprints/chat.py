@@ -23,9 +23,9 @@ from ..constants import DEFAULT_MODEL, MAX_CHAT_ATTACHMENT_LENGTH
 from ..db import get_db
 from ..helpers import get_settings, now_str
 from ..services import ollama, web_search, workspace_tools
-from ..services.workspace_tools import relevant_memories
 from ..services.learning import retrieve_experiences, retrieve_failures, record_success
-from ..services.memory_extraction import extract_explicit_memory
+from ..services.memory import memory_context
+from ..services.memory_extraction import extract_explicit_memories
 from ..services.workspace_search import retrieve_context
 
 bp = Blueprint("chat", __name__)
@@ -36,6 +36,7 @@ MAX_TITLE_LENGTH = 90
 AUTOMATIC_CALENDAR_TOOLS = {
     "read_calendar_events", "create_calendar_event", "update_calendar_event", "delete_calendar_event",
 }
+CHAT_TOOLS = AUTOMATIC_CALENDAR_TOOLS | {"read_memory", "save_memory"}
 
 
 def _tool_status(name):
@@ -44,7 +45,25 @@ def _tool_status(name):
         "create_calendar_event": "Adding the calendar event…",
         "update_calendar_event": "Updating the calendar event…",
         "delete_calendar_event": "Removing the calendar event…",
+        "read_memory": "Checking saved memory…",
+        "save_memory": "Saving that to memory…",
     }.get(name, "Working with your workspace…")
+
+
+def _tool_retry_instruction(name):
+    if name == "save_memory":
+        return (
+            "Write the memory as a short third-person note, for example "
+            "'The user likes pizza.' Never store passwords, secrets, one-off tasks, "
+            "or details the user did not state."
+        )
+    if name == "read_memory":
+        return "Use a short query describing the saved information you need."
+    return (
+        "Correct this internally using the user's original natural-language request and local date context. "
+        "Never ask the user for a date format. If the date was not specified, omit the optional date; "
+        "if it is genuinely unclear, ask what day they mean in plain language."
+    )
 
 
 def _explicit_web_search_query(text):
@@ -424,6 +443,10 @@ def _system_prompt(query):
         '{"ultron_tool":"tool_name","arguments":{...}}. After the result, give a concise confirmation or answer.'
         "\nCalendar tools: read_calendar_events(date_from?, date_to?), create_calendar_event(title, date, start_time, end_time?, description?, category?), "
         "update_calendar_event(id, title?, date?, start_time?, end_time?, description?, category?), delete_calendar_event(id)."
+        "\nMemory tools: read_memory(query), save_memory(content, category?). Call save_memory when the user explicitly "
+        "asks you to remember something or shares a durable fact or preference. Write content as a short third-person "
+        "note such as 'The user likes pizza.' Never save passwords, secrets, one-off tasks, or transient details; the "
+        "application also captures clear durable statements automatically."
     )
     prompt += (
         f"\nMachine-local date and time: {now_str()}. Interpret relative calendar dates "
@@ -436,12 +459,16 @@ def _system_prompt(query):
     )
 
     if settings.get("use_memory", "1") == "1":
-        memories = relevant_memories(get_db(), query)
+        memories = memory_context(get_db(), query)
         if memories:
-            lines = [f"- [{row['category']}] {row['content']}" for row in memories]
+            lines = [f"- [{item['category']}] {item['content']}" for item in memories]
             prompt += (
-                "\n\nRelevant saved memory notes (use only when applicable):\n"
+                "\n\nLong-term memory about the user, saved from earlier conversations "
+                "(durable facts and preferences; apply them naturally when relevant):\n"
                 + "\n".join(lines)
+                + "\nNever claim the user has not told you something that appears above. "
+                "If the current request conflicts with an older note, follow the user's newest statement. "
+                "Do not recite the whole memory list unless the user asks."
             )
     experiences = retrieve_experiences(get_db(), query, limit=2)
     if experiences:
@@ -494,12 +521,6 @@ def _persist_reply(database_path, conversation_id, reply, finished_at, document_
             "UPDATE conversations SET updated_at = ? WHERE id = ?",
             (finished_at, conversation_id),
         )
-        extraction_setting = connection.execute("SELECT value FROM settings WHERE key='memory_auto_extract'").fetchone()
-        learning_setting = connection.execute("SELECT value FROM settings WHERE key='automatic_learning'").fetchone()
-        if (not extraction_setting or extraction_setting[0] == "1") and (not learning_setting or learning_setting[0] == "1"):
-            user_row = connection.execute("SELECT content FROM messages WHERE conversation_id=? AND role='user' ORDER BY id DESC LIMIT 1", (conversation_id,)).fetchone()
-            if user_row:
-                extract_explicit_memory(connection, user_row[0])
         connection.commit()
         return cursor.lastrowid
     finally:
@@ -522,6 +543,7 @@ def api_stream_reply(conversation_id):
     conversation = _get_conversation(db, conversation_id)
     if conversation is None:
         return jsonify(error="Conversation not found."), 404
+    settings = get_settings()
 
     if content and len(content) > MAX_MESSAGE_LENGTH:
         return jsonify(error="Message is too long."), 400
@@ -575,10 +597,16 @@ def api_stream_reply(conversation_id):
     latest_user_id = next((row["id"] for row in history if row["role"] == "user"), None)
     latest_user_row = next((row for row in history if row["role"] == "user"), None)
     active_document_id = latest_user_row["document_id"] if latest_user_row else None
-    settings = get_settings()
+    remembered_text = content or latest_user_message
+    if remembered_text and settings.get("memory_auto_extract", "1") == "1":
+        try:
+            extract_explicit_memories(db, remembered_text, auto_approve=True)
+            db.commit()
+        except Exception:
+            db.rollback()
     workspace_context = retrieve_context(
-        db, content or latest_user_message, max_items=8, max_characters=3500,
-        include_memories=settings.get("use_memory", "1") == "1",
+        db, remembered_text, max_items=8, max_characters=3500,
+        include_memories=False,
     )
     if requested_document_id is None:
         requested_document_id = active_document_id
@@ -737,26 +765,29 @@ def api_stream_reply(conversation_id):
                 # Small local models often preface their JSON tool call despite the
                 # instruction to return JSON only.
                 tool_call = workspace_tools.parse_tool_call(round_text)
-                if tool_call and tool_call[0] in AUTOMATIC_CALENDAR_TOOLS:
+                if tool_call and tool_call[0] in CHAT_TOOLS:
                     if tool_calls >= workspace_tools.MAX_TOOL_CALLS:
                         reply = "I reached the action limit for this request. Ask me to continue."
                         yield _sse("token", {"token": reply})
                         break
                     tool_name, arguments = tool_call
                     yield _sse("status", {"message": _tool_status(tool_name)})
-                    if not _tool_matches_productivity_request(tool_name, latest_user_message):
+                    if tool_name in AUTOMATIC_CALENDAR_TOOLS and not _tool_matches_productivity_request(tool_name, latest_user_message):
                         result = {
                             "error": "This tool does not match the kind of change the user requested.",
                             "instruction": "Use the matching calendar tool for the user's original request. The rejected action was not saved.",
                         }
+                    elif tool_name == "save_memory" and settings.get("use_memory", "1") != "1":
+                        result = {
+                            "error": "Long-term memory is disabled in Settings.",
+                            "instruction": "Tell the user memory is disabled and do not claim the note was saved.",
+                        }
                     else:
                         signature = (tool_name, json.dumps(arguments, sort_keys=True, ensure_ascii=False))
                         if signature in failed_tool_signatures:
-                            failed_tool_signatures.add(signature)
                             result = {
                                 "error": "This exact action already failed in this request. Change the approach or ask the user for the missing detail; do not repeat it.",
                                 "instruction": (
-                                    "Correct this internally using the user's original natural-language request and local date context. "
                                     "Choose a materially different action or ask for the missing information in plain language."
                                 ),
                             }
@@ -770,13 +801,9 @@ def api_stream_reply(conversation_id):
                                 failed_tool_signatures.add(signature)
                                 result = {
                                     "error": str(error),
-                                    "instruction": (
-                                        "Correct this internally using the user's original natural-language request and local date context. "
-                                        "Never ask the user for a date format. If the date was not specified, omit the optional date; "
-                                        "if it is genuinely unclear, ask what day they mean in plain language."
-                                    ),
+                                    "instruction": _tool_retry_instruction(tool_name),
                                 }
-                                if settings.get("automatic_learning", "1") == "1":
+                                if tool_name in AUTOMATIC_CALENDAR_TOOLS and settings.get("automatic_learning", "1") == "1":
                                     failure_db = sqlite3.connect(database_path, timeout=15)
                                     try:
                                         failure_db.execute("INSERT INTO learning_history(record_type,title,details,created_at) VALUES('calendar_failure',?,?,?)", (tool_name, f"Request: {latest_user_message[:800]}\nFailed action: {json.dumps(arguments, ensure_ascii=False)[:800]}\nError: {str(error)[:800]}", now_str()))
@@ -811,15 +838,15 @@ def api_stream_reply(conversation_id):
                         model_messages.extend([
                             {"role": "assistant", "content": round_text},
                             {"role": "user", "content": (
-                                "Your last response was not a valid calendar action. Try once more using exactly "
+                                "Your last response was not a valid assistant action. Try once more using exactly "
                                 '{"ultron_tool":"tool_name","arguments":{...}}. Use one of these exact tool names: '
                                 "read_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event, "
-                                "Return only the JSON object."
+                                "read_memory, save_memory. Return only the JSON object."
                             )},
                         ])
                         malformed_tool_retries += 1
                         continue
-                    reply = "I couldn't complete that calendar action. Please restate what you want me to do."
+                    reply = "I couldn't complete that action. Please restate what you want me to do."
                     yield _sse("token", {"token": reply})
                 else:
                     if requires_productivity_mutation and not productivity_mutation_succeeded:

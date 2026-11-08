@@ -48,4 +48,4 @@ DEFAULT_SETTINGS = {
 EVENT_CATEGORIES = ("general", "work", "study", "personal", "health")
 DOCUMENT_FORMATS = ("markdown", "text")
 MAX_CHAT_ATTACHMENT_LENGTH = 30000
-MEMORY_CATEGORIES = ("general", "fact", "preference", "project")
+MEMORY_CATEGORIES = ("general", "fact", "preference", "project", "instruction")

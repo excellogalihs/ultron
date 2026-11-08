@@ -16,7 +16,7 @@
 
 <div class="context-note">
   <span class="context-note__icon">{{ icon('memory', 17) }}</span>
-  <p><strong>{{ counts.active }}</strong> active {{ 'memory is' if counts.active == 1 else 'memories are' }} appended to the system context on each chat request when memory is enabled in settings. Nothing is used if you switch it off.</p>
+  <p><strong>{{ counts.active }}</strong> active {{ 'memory is' if counts.active == 1 else 'memories are' }} available to the assistant in every conversation. The most relevant and important notes are added to the system context within a bounded limit; older or less relevant notes are not sent. Nothing is used if you switch memory off.</p>
   <a class="text-link" href="{{ url_for('settings.index') }}">Context settings {{ icon('arrow-right', 12) }}</a>
 </div>
 

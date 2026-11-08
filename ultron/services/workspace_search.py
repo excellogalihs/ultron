@@ -122,10 +122,10 @@ def _resolve(db, source, item_id, title, content):
         href, updated = f"/calendar?view=day&date={row['updated_at'][:10]}&event={item_id}", row["updated_at"]
         metadata = {"start_at": row["updated_at"], "end_at": row["end_at"], "category": row["category"]}
     elif source == "memory":
-        row = db.execute("SELECT updated_at,active FROM memories WHERE id=?", (item_id,)).fetchone()
+        row = db.execute("SELECT updated_at,active,approved FROM memories WHERE id=?", (item_id,)).fetchone()
         if not row: return None
         href, updated = f"/memory#memory-{item_id}", row["updated_at"]
-        metadata = {"active": bool(row["active"])}
+        metadata = {"active": bool(row["active"]), "approved": bool(row["approved"])}
     elif source == "knowledge":
         row = db.execute("SELECT updated_at,status,file_type FROM knowledge_files WHERE id=?", (item_id,)).fetchone()
         if not row: return None
@@ -146,7 +146,9 @@ def retrieve_context(db, query, max_items=6, max_characters=5000, include_memori
     selected, total = [], 0
     seen = set()
     for item in result["results"]:
-        if item["type"] == "memory" and not item["metadata"].get("active"):
+        if item["type"] == "memory" and (
+            not item["metadata"].get("active") or not item["metadata"].get("approved")
+        ):
             continue
         if item["type"] == "knowledge" and item["metadata"].get("status") != "indexed":
             continue
