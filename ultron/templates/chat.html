@@ -37,6 +37,7 @@
       </div>
       <div class="chat-head__actions">
         <span class="chat-engine-status is-checking" id="chat-connection-state" role="status">Checking engine</span>
+        <button class="btn btn--small workspace-mobile-open" type="button" id="workspace-mobile-open" hidden>Document</button>
         <button class="icon-btn" type="button" id="rename-conversation" title="Rename conversation" aria-label="Rename conversation"{% if not conversation %} hidden{% endif %}>{{ icon('edit', 15) }}</button>
         <button class="icon-btn icon-btn--danger" type="button" id="delete-conversation" title="Delete conversation" aria-label="Delete conversation"{% if not conversation %} hidden{% endif %}>{{ icon('trash', 16) }}</button>
       </div>
@@ -50,6 +51,7 @@
         <div class="prompt-starters">
           <button type="button" data-prompt="Summarize the key points of this text: ">{{ icon('spark', 14) }} Summarize a long text</button>
           <button type="button" data-prompt="Draft a short, clear plan for: ">{{ icon('tasks', 14) }} Draft a plan</button>
+          <button type="button" data-prompt="Write a professional report about: ">{{ icon('doc', 14) }} Write a document</button>
           <button type="button" data-prompt="Explain this in plain language: ">{{ icon('chat', 14) }} Explain a concept</button>
         </div>
       </div>
@@ -87,6 +89,42 @@
       </div>
     </form>
   </section>
+  <div class="workspace-splitter" id="workspace-splitter" role="separator" aria-orientation="vertical" aria-label="Resize chat and workspace" tabindex="0" hidden></div>
+  <aside class="chat-workspace" id="chat-workspace" aria-label="Document and email workspace" hidden>
+    <header class="workspace-head">
+      <nav class="workspace-mobile-tabs" aria-label="Workspace view"><button type="button" data-mobile-view="chat" class="is-active">Chat</button><button type="button" data-mobile-view="workspace">Workspace</button></nav>
+      <nav class="workspace-kind-tabs" aria-label="Workspace type"><button type="button" data-work-kind="document" class="is-active">Document</button><button type="button" data-work-kind="email" hidden>Email reply</button></nav>
+      <button class="icon-btn workspace-close" type="button" id="workspace-close" title="Close workspace" aria-label="Close workspace">×</button>
+    </header>
+    <section class="workspace-document" id="workspace-document">
+      <div class="workspace-docbar">
+        <input class="workspace-title" id="workspace-title" maxlength="200" aria-label="Document title" placeholder="Untitled document">
+        <span class="workspace-save-status" id="workspace-save-status" role="status">Not saved</span>
+        <button class="btn btn--small" type="button" id="workspace-save">Save</button>
+        <a class="btn btn--small" id="workspace-export" href="#" download>Export DOCX</a>
+      </div>
+      <div class="workspace-toolbar">
+        <button type="button" data-format="bold" title="Bold"><strong>B</strong></button><button type="button" data-format="italic" title="Italic"><em>I</em></button><button type="button" data-format="underline" title="Underline"><u>U</u></button><button type="button" data-format="strike" title="Strikethrough"><s>S</s></button>
+        <button type="button" data-format="align-left" title="Align left">L</button><button type="button" data-format="align-center" title="Center">C</button><button type="button" data-format="align-right" title="Align right">R</button>
+        <span></span><button type="button" data-format="heading" title="Heading">H</button><button type="button" data-format="bullet" title="Bulleted list">• List</button><button type="button" data-format="number" title="Numbered list">1. List</button><button type="button" data-format="table" title="Insert table">Table</button><button type="button" data-format="pagebreak" title="Page break">Page break</button>
+        <span class="toolbar-spacer"></span><select id="workspace-template" aria-label="Insert document template"><option value="">Template…</option><option value="essay">Essay</option><option value="academic">Academic report</option><option value="professional">Professional report</option><option value="speech">Speech</option><option value="letter">Business letter</option><option value="meeting">Meeting notes</option><option value="study">Study guide</option></select>
+        <select id="workspace-version-select" aria-label="Document version history"><option value="">History…</option></select><button type="button" id="workspace-restore" title="Restore selected version">Restore</button>
+      </div>
+      <div class="workspace-findbar"><input id="workspace-find" placeholder="Find" aria-label="Find text"><input id="workspace-replace" placeholder="Replace with" aria-label="Replacement text"><button type="button" id="workspace-find-button">Find next</button><button type="button" id="workspace-replace-button">Replace all</button><button class="icon-btn icon-btn--danger" type="button" id="workspace-delete" title="Delete document" aria-label="Delete document">Delete</button></div>
+      <div class="workspace-modebar"><div class="segmented" role="group" aria-label="Document mode"><button type="button" data-work-mode="edit" class="is-active" aria-pressed="true">Edit</button><button type="button" data-work-mode="preview" aria-pressed="false">Preview</button></div><span id="workspace-word-count">0 words</span><button type="button" id="workspace-insert-email" class="workspace-insert-email" hidden>Insert reply</button></div>
+      <div class="workspace-editors"><textarea id="workspace-content" spellcheck="true" placeholder="Start writing or ask ultron to draft this document…" aria-label="Document content"></textarea><article id="workspace-preview" class="workspace-preview" hidden></article></div>
+      <footer class="workspace-foot"><span id="workspace-doc-meta">Local document · A4 DOCX export</span><button type="button" id="workspace-open-library">Open library</button></footer>
+    </section>
+    <section class="workspace-email" id="workspace-email" hidden>
+      <div class="workspace-email-intro"><span class="label label--muted">DRAFT ONLY · NEVER SENT</span><p>Review and edit the reply, then copy it into your email app.</p></div>
+      <label>To<input id="email-recipient" autocomplete="off" placeholder="Recipient, if available"></label>
+      <label>Subject<input id="email-subject" autocomplete="off" placeholder="Subject, if available"></label>
+      <label class="email-body-label">Reply<textarea id="email-reply" spellcheck="true" placeholder="Ultron's reply draft will appear here…"></textarea></label>
+      <details class="workspace-email-original"><summary>Original email</summary><pre id="email-original-content"></pre></details>
+      <div class="workspace-email-actions"><button class="btn btn--primary" id="email-copy" type="button">Copy reply</button><button class="btn" id="email-regenerate" type="button">Regenerate</button><button class="btn" id="email-insert-document" type="button">Insert into document</button></div>
+      <p class="workspace-email-status" id="email-status" role="status"></p>
+    </section>
+  </aside>
 </div>
 <div class="chat-rail-scrim" id="chat-rail-scrim" hidden></div>
 <dialog class="chat-rename-dialog" id="rename-dialog" aria-labelledby="rename-dialog-title">
@@ -109,5 +147,6 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/markdown.js') }}" defer></script>
-<script src="{{ url_for('static', filename='js/chat.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/workspace.js', v=3) }}" defer></script>
+<script src="{{ url_for('static', filename='js/chat.js', v=3) }}" defer></script>
 {% endblock %}

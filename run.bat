@@ -32,6 +32,12 @@ if not exist ".venv" (
     call .venv\Scripts\activate.bat
 )
 
+python -c "import docx" >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [ultron] Installing document formatting support...
+    pip install --quiet -r requirements.txt
+)
+
 where ollama >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [NOTE] Ollama CLI was not detected in PATH.

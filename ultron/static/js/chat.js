@@ -32,11 +32,44 @@
   const railToggle = document.getElementById("chat-rail-toggle");
   const railClose = document.getElementById("chat-rail-close");
   const railScrim = document.getElementById("chat-rail-scrim");
+  const workspace = window.UltronWorkspace;
 
   let streaming = false;
   let activeController = null;
   let pendingAttachment = null;
   let uploadingAttachment = false;
+  let pendingEmailDraft = false;
+  let emailDraftActive = false;
+  let emailDraftSource = "";
+  let pendingDocumentEdit = false;
+  let pendingDocumentRange = null;
+
+  const looksLikeEmail = (text) => {
+    const value = (text || "").trim();
+    const headers = /^\s*(?:from|subject|to|date|cc):\s*.+/im.test(value);
+    const greeting = /^(?:dear|hello|hi)\s+[^\n,]+[,\n]/im.test(value);
+    const emailAddress = /[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(value);
+    const signoff = /\b(?:regards|best|sincerely|thank you|thanks),?\s*\n/i.test(value);
+    const asksForReply = /\b(?:draft|write|compose|reply to|respond to)\b.{0,40}\b(?:email|message)\b/i.test(value);
+    return (headers && value.length > 70) || (value.length > 100 && greeting && (emailAddress || signoff) && value.includes("?")) || (asksForReply && value.length > 120);
+  };
+  const emailRevision = (text) => /\b(?:make (?:it )?(?:shorter|longer|more professional|more natural|more polite|less formal|confident)|make it sound (?:more )?(?:natural|professional|confident|polite)|be (?:more )?(?:professional|natural|polite|confident)|decline (?:the )?invitation|accept (?:the )?offer|ask them for more information|revise (?:the )?(?:email|reply)|change the tone|add more detail)\b/i.test(text || "");
+  const documentIntent = (text) => {
+    const value = text || "";
+    const action = /\b(?:write|draft|create|make|compose|prepare|improve|rewrite|edit|format|turn|add|remove|shorten|expand|fix|organize|build)\b/i.test(value);
+    const artifact = /\b(?:document|essay|report|speech|study guide|business letter|meeting notes|proposal|memo|article|paragraph|introduction|conclusion|draft|manuscript|poem|poetry|story|blog post|newsletter|resume|cover letter|script|chapter|study notes|guide|letter)\b/i.test(value);
+    const broadWritingRequest = /^\s*(?:please\s+)?(?:write|draft|compose|author)\s+(?:me\s+)?(?:(?:a|an|some)\s+)?(?:\w+\s+){0,2}(?:poem|poetry|story|essay|report|speech|letter|article|script|something|anything|smth)\b/i.test(value)
+      || /^\s*(?:please\s+)?(?:write|draft|compose|author)\s+(?:me\s+)?(?:something|anything|smth)\b/i.test(value);
+    const otherWorkspaceAction = /\b(?:task|calendar|event|reminder|project|python|javascript|typescript|function|class|code|sql|shell script)\b/i.test(value) && /\b(?:add|create|schedule|complete|delete|update|write|make|build)\b/i.test(value);
+    return action && (artifact || broadWritingRequest) && !otherWorkspaceAction;
+  };
+  const documentEdit = (text) => /\b(?:write|draft|create|make|compose|prepare|improve|rewrite|edit|format|turn this into|add|remove|shorten|expand|fix|organize|build)\b/i.test(text || "") && !/\b(?:explain|summarize|review|suggest|check|find)\b/i.test(text || "");
+  const newDocumentRequest = (text) => (/\b(?:write|draft|create|compose|prepare|author)\b/i.test(text || "") || /\bmake\s+(?:me\s+)?(?:a|an|new)\b/i.test(text || "")) && /\b(?:essay|report|speech|study guide|letter|proposal|memo|article|study notes|meeting notes|document|poem|poetry|story|blog post|newsletter|resume|cover letter|script|chapter|guide|something|anything|smth)\b/i.test(text || "") && !/\b(?:this|current|existing|same|the\s+document|introduction|conclusion|paragraph|section|heading)\b/i.test(text || "");
+  const documentTitle = (text) => {
+    const cleaned = (text || "").replace(/\s+/g, " ").trim();
+    const about = cleaned.match(/\b(?:about|on|titled|called)\s+(.+?)\s*[.!?]*$/i)?.[1];
+    return (about || cleaned).slice(0, 72).replace(/^["'“”]+|["'“”]+$/g, "") || "New document";
+  };
 
   const autoResize = () => {
     input.style.height = "auto";
@@ -138,6 +171,9 @@
         regenerateButton.disabled = true;
         try {
           await Ultron.api(`/api/conversations/${conversationId}/regenerate`, { method: "POST" });
+          pendingDocumentEdit = Boolean(message.dataset.documentId);
+          pendingDocumentRange = pendingDocumentEdit ? workspace?.getSelectionRange() : null;
+          if (emailDraftActive) pendingEmailDraft = true;
           message.remove();
           await startStream(null);
         } catch (error) {
@@ -314,6 +350,15 @@
             renderAssistant(target.wrap, received);
             applyTitle(event.data.title);
             markThreadCurrent();
+            if (pendingEmailDraft && emailDraftActive && workspace) {
+              workspace.captureEmail(received, emailDraftSource, target.wrap);
+              pendingEmailDraft = false;
+            }
+            if (pendingDocumentEdit && workspace) {
+              await workspace.setGeneratedContent(received, pendingDocumentRange);
+              pendingDocumentEdit = false;
+              pendingDocumentRange = null;
+            }
           }
         }
 
@@ -343,7 +388,7 @@
     scrollBottom(true);
   };
 
-  const startStream = async (content = null, documentId = null) => {
+  const startStream = async (content = null, documentId = null, documentSelection = "") => {
     if (streaming || !conversationId) return;
     errorBanner.hidden = true;
     const target = createStreamingMessage();
@@ -359,7 +404,7 @@
           "Content-Type": "application/json",
           Accept: "text/event-stream",
         },
-        body: JSON.stringify(content ? { content, document_id: documentId } : {}),
+        body: JSON.stringify({ ...(content ? { content } : {}), document_id: documentId, document_selection: documentSelection, email_draft: pendingEmailDraft ? (workspace?.getEmailDraft() || "") : "" }),
       });
 
       if (!response.ok) {
@@ -414,14 +459,57 @@
       return;
     }
 
+    const incomingEmail = looksLikeEmail(content);
+    const revisingEmail = emailDraftActive && emailRevision(content) && !incomingEmail;
+    const documentTask = !incomingEmail && !revisingEmail && (documentIntent(content) || (pendingAttachment && documentEdit(content)) || (workspace?.getDocumentId() && documentEdit(content)));
+    let documentId = incomingEmail ? null : (pendingAttachment?.id || null);
+    let documentSelection = "";
+
+    if (incomingEmail) {
+      emailDraftActive = true;
+      emailDraftSource = content;
+      pendingEmailDraft = true;
+      workspace?.prepareEmail(content);
+    } else if (revisingEmail) {
+      pendingEmailDraft = true;
+      emailDraftSource = workspace?.getEmailOriginal() || emailDraftSource;
+    }
+
+    if (documentTask && workspace) {
+      try {
+        if (newDocumentRequest(content)) documentId = null;
+        else documentId = documentId || workspace.getDocumentId();
+        if (!documentId) {
+          const rememberedId = Number(sessionStorage.getItem("ultron-active-document") || 0);
+          if (rememberedId && (documentIntent(content) || documentEdit(content))) documentId = rememberedId;
+        }
+        if (documentId) {
+          await workspace.open(documentId, "document");
+        } else {
+          const created = await Ultron.api("/api/documents", { method: "POST", body: { title: documentTitle(content), content: "", format: "markdown" } });
+          documentId = created.document.id;
+          await workspace.open(documentId, "document");
+        }
+        pendingDocumentEdit = documentEdit(content);
+        pendingDocumentRange = workspace.getSelectionRange();
+        documentSelection = workspace.getSelection();
+      } catch (error) {
+        Ultron.toast(`Could not open the document workspace: ${error.message}`, "error");
+        return;
+      }
+    }
+
     if (!conversationId) {
       sendBtn.disabled = true;
       try {
         const created = await Ultron.api("/api/conversations", {
           method: "POST",
-          body: { first_message: content, document_id: pendingAttachment?.id || null },
+          body: { first_message: content, document_id: documentId },
         });
-        window.location.href = `/chat/${created.id}?autosend=1`;
+        const query = new URLSearchParams({ autosend: "1" });
+        if (documentId) query.set("doc", documentId);
+        if (incomingEmail) query.set("email", "1");
+        window.location.href = `/chat/${created.id}?${query}`;
       } catch (error) {
         sendBtn.disabled = false;
         Ultron.toast(error.message, "error");
@@ -431,12 +519,19 @@
 
     input.value = "";
     autoResize();
-    const documentId = pendingAttachment?.id || null;
     createMessage("user", content, documentId, pendingAttachment ? `${pendingAttachment.title}${pendingAttachment.fileType}` : "");
     pendingAttachment = null;
     attachmentChip.hidden = true;
     attachmentInput.value = "";
-    await startStream(content, documentId);
+    await startStream(content, documentId, documentSelection);
+  });
+
+  document.addEventListener("ultron:email-regenerate", () => {
+    if (streaming || !conversationId) return;
+    emailDraftActive = true;
+    pendingEmailDraft = true;
+    emailDraftSource = workspace?.getEmailOriginal() || emailDraftSource;
+    startStream(null);
   });
 
   attachButton?.addEventListener("click", () => attachmentInput.click());
@@ -463,9 +558,9 @@
       };
       attachmentName.textContent = `${result.document.title}${result.document.file_type}`;
       attachmentChip.hidden = false;
-      Ultron.toast(result.document.file_type === ".docx"
-        ? "Word text added. Layout is simplified for editing. Ask ultron what to change."
-        : "File added. Ask ultron what to change.");
+      Ultron.toast(result.notice || (result.document.file_type === ".docx"
+        ? "Word file added. Supported formatting is available in the document workspace; advanced layout may not be preserved."
+        : "File added. Ask ultron what to change."));
     } catch (error) {
       Ultron.toast(error.message, "error");
       attachmentInput.value = "";
@@ -599,6 +694,17 @@
     window.UltronMarkdown.render(body, raw);
     addMessageActions(message);
   });
+  const persistedMessages = [...messagesEl.querySelectorAll(".msg")];
+  const lastPersisted = persistedMessages[persistedMessages.length - 1];
+  const persistedUserTexts = persistedMessages.filter((message) => message.classList.contains("msg--user")).map((message) => message.querySelector(".msg__body")?.dataset.rawText || message.querySelector(".msg__body")?.textContent || "");
+  const latestPersistedUser = persistedUserTexts[persistedUserTexts.length - 1] || "";
+  const previousEmail = [...persistedUserTexts].reverse().find(looksLikeEmail) || "";
+  if (lastPersisted?.classList.contains("msg--assistant") && previousEmail && (looksLikeEmail(latestPersistedUser) || emailRevision(latestPersistedUser)) && workspace) {
+    const lastReply = lastPersisted.querySelector(".msg__body")?.dataset.rawText || lastPersisted.querySelector(".msg__body")?.textContent || "";
+    emailDraftActive = true;
+    emailDraftSource = previousEmail;
+    workspace.captureEmail(lastReply, previousEmail, lastPersisted);
+  }
   input.focus();
   window.requestAnimationFrame(() => scrollBottom(true));
 
@@ -618,11 +724,24 @@
 
   const params = new URLSearchParams(window.location.search);
   if (params.get("autosend") === "1" && conversationId) {
-    history.replaceState(null, "", window.location.pathname);
+    const documentParam = params.get("doc");
+    history.replaceState(null, "", `${window.location.pathname}${documentParam ? `?doc=${documentParam}` : ""}`);
     const allMessages = messagesEl.querySelectorAll(".msg");
     const last = allMessages[allMessages.length - 1];
     if (last && last.classList.contains("msg--user")) {
-      startStream(null);
+      const lastText = last.querySelector(".msg__body")?.textContent || "";
+      if (params.get("email") === "1" || looksLikeEmail(lastText)) {
+        emailDraftActive = true;
+        pendingEmailDraft = true;
+        emailDraftSource = lastText;
+        workspace?.prepareEmail(lastText);
+      }
+      const docId = Number(documentParam || 0) || null;
+      pendingDocumentEdit = Boolean(docId && documentEdit(lastText));
+      (async () => {
+        if (docId) await workspace?.open(docId, "document");
+        await startStream(null, docId, "");
+      })().catch((error) => Ultron.toast(error.message, "error"));
     }
   }
 

@@ -1,8 +1,8 @@
 /* Small, safe Markdown subset for locally generated assistant messages. */
 
 (() => {
-  const inlinePattern = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g;
-  const blockPattern = /^(#{1,6}\s|```|>\s?|(?:[-*+]\s|\d+\.\s)|(?:---+|___+|\*\*\*+)$)/;
+  const inlinePattern = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|~~[^~]+~~|\+\+[^+]+\+\+|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g;
+  const blockPattern = /^(#{1,6}\s|```|>\s?|(?:[-*+]\s|\d+\.\s)|(?:---+|___+|\*\*\*+)$|:::(?:left|center|right)$|\s*\|.*\|\s*$)/;
 
   const appendInline = (parent, text) => {
     let cursor = 0;
@@ -21,6 +21,12 @@
       } else if (token.startsWith("*") || token.startsWith("_")) {
         node = document.createElement("em");
         node.textContent = token.slice(1, -1);
+      } else if (token.startsWith("~~")) {
+        node = document.createElement("del");
+        node.textContent = token.slice(2, -2);
+      } else if (token.startsWith("++")) {
+        node = document.createElement("u");
+        node.textContent = token.slice(2, -2);
       } else {
         const parts = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
         if (parts) {
@@ -111,6 +117,47 @@
         appendInline(element, heading[2]);
         container.appendChild(element);
         index += 1;
+        continue;
+      }
+
+      const alignment = line.match(/^:::(left|center|right)$/);
+      if (alignment) {
+        const aligned = document.createElement("div");
+        aligned.style.textAlign = alignment[1];
+        index += 1;
+        while (index < lines.length && lines[index].trim() !== ":::") {
+          if (lines[index].trim()) {
+            const paragraph = document.createElement("p");
+            appendInline(paragraph, lines[index]);
+            aligned.appendChild(paragraph);
+          }
+          index += 1;
+        }
+        if (index < lines.length) index += 1;
+        container.appendChild(aligned);
+        continue;
+      }
+
+      if (/^\s*\|.*\|\s*$/.test(line) && index + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[index + 1])) {
+        const rows = [];
+        while (index < lines.length && /^\s*\|.*\|\s*$/.test(lines[index])) {
+          const cells = lines[index].trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+          if (!cells.every((cell) => /^:?-{3,}:?$/.test(cell))) rows.push(cells);
+          index += 1;
+        }
+        if (rows.length) {
+          const table = document.createElement("table");
+          rows.forEach((row, rowIndex) => {
+            const tr = document.createElement("tr");
+            row.forEach((cell) => {
+              const td = document.createElement(rowIndex === 0 ? "th" : "td");
+              appendInline(td, cell);
+              tr.appendChild(td);
+            });
+            table.appendChild(tr);
+          });
+          container.appendChild(table);
+        }
         continue;
       }
 

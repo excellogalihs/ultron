@@ -36,6 +36,7 @@ TABLES = (
     "conversations",
     "document_folders",
     "documents",
+    "document_versions",
     "projects",
     "messages",
     "events",

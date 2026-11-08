@@ -24,6 +24,11 @@ if [ ! -d .venv ]; then
   .venv/bin/pip install --quiet -r requirements.txt
 fi
 
+if ! .venv/bin/python -c "import docx" >/dev/null 2>&1; then
+  echo "[ultron] Installing document formatting support..."
+  .venv/bin/pip install --quiet -r requirements.txt
+fi
+
 if command -v ollama &>/dev/null; then
   echo "[ultron] Ollama CLI detected."
 else

@@ -45,6 +45,28 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_updated
     ON documents (updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS document_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    format TEXT NOT NULL DEFAULT 'markdown',
+    file_type TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT 'edit',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_document_versions_recent ON document_versions(document_id, id DESC);
+CREATE TRIGGER IF NOT EXISTS documents_snapshot_before_update
+BEFORE UPDATE OF title, content, format, file_type ON documents
+WHEN OLD.title IS NOT NEW.title OR OLD.content IS NOT NEW.content OR OLD.format IS NOT NEW.format OR OLD.file_type IS NOT NEW.file_type
+BEGIN
+  INSERT INTO document_versions(document_id,title,content,format,file_type,reason,created_at)
+  VALUES(OLD.id,OLD.title,OLD.content,OLD.format,OLD.file_type,'edit',datetime('now','localtime'));
+  DELETE FROM document_versions WHERE document_id=OLD.id AND id NOT IN (
+    SELECT id FROM document_versions WHERE document_id=OLD.id ORDER BY id DESC LIMIT 40
+  );
+END;
+
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,

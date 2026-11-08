@@ -1,3 +1,4 @@
 Flask>=3.1,<4
 ddgs>=9.16.1,<10
 pypdf>=5,<7
+python-docx>=1.1,<2

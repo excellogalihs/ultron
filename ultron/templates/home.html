@@ -63,7 +63,7 @@
     {% else %}
     <div class="dash-empty">
       {{ empty_state('doc', 'No documents yet', 'Create a note, plan, or reference page. It stays in your local database.', true) }}
-      <a class="btn btn--small" href="{{ url_for('documents.index') }}?new=1">{{ icon('plus', 13) }} New document</a>
+      <a class="btn btn--small" href="{{ url_for('chat.index', newdoc=1) }}">{{ icon('plus', 13) }} New document</a>
     </div>
     {% endif %}
   </section>

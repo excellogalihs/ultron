@@ -4,7 +4,7 @@ A local-first AI workspace built for low-end computers. ultron is a lightweight 
 
 ```
 ┌─ ULTRON ───────────────────────────────────────────────────────────────────┐
-│  Home  Chat  Documents  Calendar  Tasks  Memory  Automations  Evolution    │
+│  Home  Chat  Calendar  Tasks  Memory  Automations  Evolution             │
 │                                                                            │
 │  local SQLite  ──  Flask  ──  Ollama (gemma3:1b / 4b)  ──  Web Search     │
 └────────────────────────────────────────────────────────────────────────────┘
@@ -22,7 +22,9 @@ A local-first AI workspace built for low-end computers. ultron is a lightweight 
   - Calendar and task read/create/update/delete, with direct user-requested changes.
   - Memory read/save with relevance-filtered context injection.
   - Web search via `ddgs` (`web_search`) and webpage text reading (`fetch_webpage`).
-- **Documents & File Management** — create, search, rename, autosave, format as Markdown or plain text, preview, and organize into folders. Import `.docx`, `.txt`, `.md`, and common text/code files, use the writing assistant to propose edits, then accept and download in the source file type.
+- **Chat writing workspace** — document requests open a resizable chat/editor split pane. Edit directly, preview Markdown, apply formatting, search and replace, use practical templates, recover version snapshots, and export structured A4 `.docx` files. Existing document links open their document beside chat; the old library remains reachable from Home.
+- **Email reply drafts** — paste an incoming email into chat for a locally generated, editable reply. The original stays in the conversation, and drafts can be copied or revised; ultron never sends email.
+- **Documents & File Management** — create, search, rename, autosave, format as Markdown or plain text, preview, and organize into folders. Import `.docx`, `.txt`, `.md`, and common text/code files. Word import/export supports paragraphs, heading styles, lists, and basic tables; unsupported Word-specific features may not be preserved.
   - **Import**: Upload text, Markdown, JSON, CSV, or code files directly into your workspace.
   - **Export**: Export individual documents as `.md`/`.txt`, or export all documents in structured JSON.
   - **AI Writing Panel**: Streams suggestions for selected text or whole documents with one-click Accept/Reject.
@@ -132,7 +134,7 @@ ultron/
 | Area | Endpoints |
 | --- | --- |
 | Chat | `POST /chat/new`, `GET/POST /api/conversations`, `PATCH/DELETE /api/conversations/<id>`, `POST /api/conversations/<id>/stream` (SSE) |
-| Documents | `GET/POST /api/documents`, `GET/PATCH/DELETE /api/documents/<id>`, `POST /api/documents/import`, `GET /api/documents/<id>/export`, `GET /api/documents/export-all` |
+| Documents | `GET/POST /api/documents`, `GET/PATCH/DELETE /api/documents/<id>`, `POST /api/documents/import`, `GET /api/documents/<id>/export`, `GET /api/documents/<id>/versions`, version restore, and `GET /api/documents/export-all` |
 | Search | `GET /search`, `GET /api/search?q=...&type=...` |
 | Knowledge | `GET /knowledge`, `POST /api/knowledge/import`, `GET/DELETE /api/knowledge/<id>`, collection APIs |
 | Projects | `GET /projects`, `GET/POST /api/projects`, `GET/PATCH/DELETE /api/projects/<id>`, project link APIs |

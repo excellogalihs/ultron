@@ -59,7 +59,6 @@ def nav_items():
     candidates = (
         ("Home", "home.index", "home", "home"),
         ("Chat", "chat.index", "chat", "chat"),
-        ("Documents", "documents.index", "documents", "doc"),
         ("Knowledge Base", "knowledge.index", "knowledge", "knowledge"),
         ("Projects", "projects.index", "projects", "projects"),
         ("Search", "search.index", "search", "search"),

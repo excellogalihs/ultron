@@ -9,9 +9,11 @@ from flask import (
     Response,
     abort,
     jsonify,
+    redirect,
     render_template,
     request,
     stream_with_context,
+    url_for,
 )
 
 from ..constants import DOCUMENT_FORMATS, MAX_CHAT_ATTACHMENT_LENGTH
@@ -100,6 +102,8 @@ def index():
         ).fetchone()
         if not exists:
             selected_id = None
+        else:
+            return redirect(url_for("chat.index", doc=selected_id))
 
     return render_template(
         "documents.html",
@@ -270,6 +274,36 @@ def api_delete(document_id):
     return jsonify(ok=True)
 
 
+@bp.get("/api/documents/<int:document_id>/versions")
+def api_versions(document_id):
+    db = get_db()
+    if not db.execute("SELECT 1 FROM documents WHERE id=?", (document_id,)).fetchone():
+        return jsonify(error="Document not found."), 404
+    rows = db.execute("SELECT id,document_id,title,format,file_type,reason,created_at,length(content) AS character_count FROM document_versions WHERE document_id=? ORDER BY id DESC LIMIT 40", (document_id,)).fetchall()
+    return jsonify(versions=[dict(row) for row in rows])
+
+
+@bp.get("/api/documents/<int:document_id>/versions/<int:version_id>")
+def api_get_version(document_id, version_id):
+    row = get_db().execute("SELECT * FROM document_versions WHERE document_id=? AND id=?", (document_id, version_id)).fetchone()
+    if row is None:
+        return jsonify(error="Document version not found."), 404
+    return jsonify(version=dict(row))
+
+
+@bp.post("/api/documents/<int:document_id>/versions/<int:version_id>/restore")
+def api_restore_version(document_id, version_id):
+    db = get_db()
+    current = db.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()
+    version = db.execute("SELECT * FROM document_versions WHERE document_id=? AND id=?", (document_id, version_id)).fetchone()
+    if current is None or version is None:
+        return jsonify(error="Document or version not found."), 404
+    db.execute("UPDATE documents SET title=?,content=?,format=?,file_type=?,updated_at=? WHERE id=?", (version["title"], version["content"], version["format"], version["file_type"], now_str(), document_id))
+    db.commit()
+    restored = db.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()
+    return jsonify(document=_serialize(restored), message="Version restored. The previous current version was saved to history.")
+
+
 @bp.post("/api/documents/<int:document_id>/assist")
 def api_assist_document(document_id):
     data = request.get_json(silent=True) or {}
@@ -354,7 +388,7 @@ def api_export(document_id):
     if row is None:
         return jsonify(error="Document not found."), 404
     fmt = request.args.get("format") or row["format"] or "markdown"
-    ext = (row["file_type"] or (".md" if fmt == "markdown" else ".txt")).lower()
+    ext = ".docx" if fmt == "docx" else (row["file_type"] or (".md" if fmt == "markdown" else ".txt")).lower()
     if not ext.startswith("."):
         ext = f".{ext}"
     title = row["title"] or "untitled"
@@ -458,4 +492,7 @@ def api_import():
     )
     db.commit()
     row = db.execute("SELECT * FROM documents WHERE id = ?", (cursor.lastrowid,)).fetchone()
-    return jsonify(document=_serialize(row)), 201
+    result = {"document": _serialize(row)}
+    if file_type == ".docx":
+        result["notice"] = "Imported supported text, heading, list, and table structure. Comments, tracked changes, embedded objects, and unsupported Word-specific layout may not be preserved."
+    return jsonify(result), 201
