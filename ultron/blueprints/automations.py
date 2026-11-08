@@ -89,6 +89,10 @@ def _execute(db, automation, trigger="schedule"):
         rows = db.execute("SELECT title,start_at FROM events WHERE start_at>=? AND start_at<? ORDER BY start_at", (f"{today} 00:00:00", f"{today + timedelta(days=1)} 00:00:00")).fetchall()
         parts.append("Today's events: " + ("; ".join(f"{row['start_at'][11:16]} {row['title']}" for row in rows) if rows else "none scheduled"))
         actions.append({"step": "Read today's calendar events", "count": len(rows)})
+    if "task" in instruction:
+        rows = db.execute("SELECT title,due_date FROM tasks WHERE status='pending' ORDER BY due_date,due_time,id LIMIT 100").fetchall()
+        parts.append("Unfinished tasks: " + ("; ".join(row["title"] + (f" (due {row['due_date']})" if row["due_date"] else "") for row in rows) if rows else "none"))
+        actions.append({"step": "Read unfinished tasks", "count": len(rows)})
     if not actions:
         raise ValueError("This routine does not match a supported local summary yet. Use instructions about calendar events or schedules.")
     result = "\n".join(parts)

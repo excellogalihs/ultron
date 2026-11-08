@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
+<main class="page"><header class="page-head"><h1 class="page-head__title">{{ page_title }}</h1></header>
+<section class="panel">{% for item in items %}<article><strong>{{ item.title if page == 'tasks' else item.name }}</strong></article>{% else %}<p>No {{ page }} yet.</p>{% endfor %}</section></main>
+{% endblock %}

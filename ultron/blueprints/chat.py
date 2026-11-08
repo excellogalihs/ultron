@@ -37,6 +37,7 @@ AUTOMATIC_CALENDAR_TOOLS = {
     "read_calendar_events", "create_calendar_event", "update_calendar_event", "delete_calendar_event",
 }
 CHAT_TOOLS = AUTOMATIC_CALENDAR_TOOLS | {"read_memory", "save_memory"}
+CHAT_TOOLS |= {"create_task", "read_tasks"}
 
 
 def _tool_status(name):
@@ -47,6 +48,8 @@ def _tool_status(name):
         "delete_calendar_event": "Removing the calendar event…",
         "read_memory": "Checking saved memory…",
         "save_memory": "Saving that to memory…",
+        "create_task": "Adding the task…",
+        "read_tasks": "Checking your tasks…",
     }.get(name, "Working with your workspace…")
 
 
@@ -85,7 +88,7 @@ def _requests_productivity_mutation(text):
     normalized = (text or "").strip().casefold()
     if re.match(r"^(how|what|why|when|where)\b", normalized):
         return False
-    target = re.search(r"\b(?:calendar|events?|reminders?)\b|\bremind me to\b", normalized)
+    target = re.search(r"\b(?:calendar|events?|reminders?|tasks?)\b|\bremind me to\b", normalized)
     action = re.search(
         r"\b(add|create|make|put|schedule|set up|remove|delete|complete|finish|mark|update|edit|change|move|reschedule|remind)\b",
         normalized,
@@ -96,6 +99,8 @@ def _requests_productivity_mutation(text):
 def _tool_matches_productivity_request(tool_name, text):
     """Ensure calendar actions match the user's request."""
     normalized = (text or "").casefold()
+    if tool_name in {"create_task", "read_tasks"}:
+        return bool(re.search(r"\b(?:task|to-do|reminder|remind me)\b", normalized)) and not bool(re.search(r"\bcalendar\b", normalized))
     calendar_tool = tool_name in {
         "read_calendar_events", "create_calendar_event", "update_calendar_event", "delete_calendar_event"
     }
@@ -322,6 +327,47 @@ def _create_conversation(first_message="", title="", model=None, document_id=Non
     }
 
 
+def _simple_task_request(text):
+    """Parse a direct, unambiguous task request into a validated tool payload."""
+    raw = (text or "").strip()
+    match = re.match(r"^(?:please\s+)?(?:(?:could|can|would)\s+you\s+)?(?:add|create|make|put)\s+(?:a\s+)?(?:task|reminder)\s+(?:to\s+|that\s+)?(.+)$", raw, re.I)
+    if not match:
+        match = re.match(r"^(?:please\s+)?(?:(?:could|can|would)\s+you\s+)?add\s+(.+?)\s+to\s+my\s+(?:task|to-do)\s+list(?:\s+(.+))?\??$", raw, re.I)
+        if match:
+            title = match.group(1).strip(" '\".")
+            tail = match.group(2) or ""
+        else:
+            match = re.match(r"^I\s+need\s+to\s+create\s+a\s+task\s+to\s+(.+)$", raw, re.I)
+            if not match: return None
+            title, tail = match.group(1), ""
+    else:
+        title, tail = match.group(1), ""
+    title = re.sub(r"^(?:as\s+a\s+reminder\s+that\s+|to\s+)", "", title, flags=re.I).strip(" '\".")
+    due_date = None; due_time = None
+    today = date.today()
+    if re.search(r"\btomorrow\b", title + " " + tail, re.I): due_date=(today+timedelta(days=1)).isoformat()
+    elif re.search(r"\btoday\b", title + " " + tail, re.I): due_date=today.isoformat()
+    else:
+        date_match=re.search(r"\b(?:on\s+)?(\w+\s+\d{1,2},?\s+\d{4})\b", title+" "+tail)
+        if date_match:
+            try: due_date=datetime.strptime(date_match.group(1).replace(",", ""), "%B %d %Y").date().isoformat()
+            except ValueError: return None
+    time_match=re.search(r"\b(?:at\s+)?(\d{1,2})(?::([0-5]\d))\s*(am|pm)?\b", title, re.I)
+    if time_match:
+        hour=int(time_match.group(1)); minute=int(time_match.group(2)); meridiem=(time_match.group(3) or "").casefold()
+        if meridiem: hour=hour%12+(12 if meridiem=="pm" else 0)
+        due_time=f"{hour:02d}:{minute:02d}"
+        if not due_date: due_date=today.isoformat()
+        title=title[:time_match.start()]+" "+title[time_match.end():]
+    if due_date:
+        title=re.sub(r"\s+(?:on\s+)?(?:tomorrow|today|\w+\s+\d{1,2},?\s+\d{4})\b", "", title, flags=re.I)
+    title=re.sub(r"^(?:that\s+)?(?:I\s+)?(?:have\s+to|need\s+to)\s+", "", title.strip(), flags=re.I)
+    title=re.sub(r"\s+to\s+my\s+(?:project\s+)?tasks?$", "", title, flags=re.I).strip(" '\".,")
+    if re.match(r"^in\s+my\s+.*\btasks?\b", title, re.I): return None
+    if len(title)<2: return None
+    return {"title": title[0].upper()+title[1:], "due_date": due_date, "due_time": due_time}
+
+
 @bp.post("/chat/new")
 def new_from_form():
     first_message = (request.form.get("first_message") or "").strip()
@@ -448,6 +494,7 @@ def _system_prompt(query):
         "note such as 'The user likes pizza.' Never save passwords, secrets, one-off tasks, or transient details; the "
         "application also captures clear durable statements automatically."
     )
+    prompt += "\nTask tools: create_task(title, due_date?, due_time?, priority?, notes?, project_id?), read_tasks(status?). Use them to save or read tasks when requested. Understand task requests in ordinary language; do not ask the user to follow a template. These tool instructions are internal. Convert dates to YYYY-MM-DD; never show it to the user or ask them to repeat a date that way."
     prompt += (
         f"\nMachine-local date and time: {now_str()}. Interpret relative calendar dates "
         "using this local clock. If a date or start time is uncertain, ask before scheduling."
@@ -674,6 +721,7 @@ def api_stream_reply(conversation_id):
         direct_event = (
             None if active_document_id else _simple_calendar_request(latest_user_message)
         )
+        direct_task = None if active_document_id or direct_event else _simple_task_request(latest_user_message)
         if direct_event:
             yield _sse("status", {"message": _tool_status("create_calendar_event")})
             try:
@@ -703,6 +751,19 @@ def api_stream_reply(conversation_id):
                 {"id": message_id, "content": reply, "created_at": finished_at, "title": title,
                  "document_id": requested_document_id, "file_type": attachment_meta["file_type"] if attachment_meta else ""},
             )
+            return
+
+        if direct_task:
+            yield _sse("status", {"message": _tool_status("create_task")})
+            try:
+                result = workspace_tools.execute_tool(database_path, "create_task", direct_task, current_app.config.get("ULTRON_WORKSPACE_ROOT"))
+                reply = f"Added “{result['task']['title']}” to your tasks."
+            except workspace_tools.ToolError as error:
+                reply = f"I couldn't add that task: {error}"
+            yield _sse("token", {"token": reply})
+            finished_at = now_str()
+            message_id = _persist_reply(database_path, conversation_id, reply, finished_at, requested_document_id)
+            yield _sse("done", {"id": message_id, "content": reply, "created_at": finished_at, "title": title, "document_id": requested_document_id, "file_type": attachment_meta["file_type"] if attachment_meta else ""})
             return
 
         direct_query = _explicit_web_search_query(latest_user_message)
@@ -777,6 +838,8 @@ def api_stream_reply(conversation_id):
                             "error": "This tool does not match the kind of change the user requested.",
                             "instruction": "Use the matching calendar tool for the user's original request. The rejected action was not saved.",
                         }
+                    elif tool_name == "create_task" and not _tool_matches_productivity_request(tool_name, latest_user_message):
+                        result = {"error": "This task action does not match the kind of change the user requested.", "instruction": "Use the matching tool for the user's original request. The rejected action was not saved."}
                     elif tool_name == "save_memory" and settings.get("use_memory", "1") != "1":
                         result = {
                             "error": "Long-term memory is disabled in Settings.",
@@ -815,6 +878,8 @@ def api_stream_reply(conversation_id):
                         and "error" not in result
                     ):
                         productivity_mutation_succeeded = True
+                    if tool_name == "create_task" and "error" not in result:
+                        productivity_mutation_succeeded = True
                     if settings.get("automatic_learning", "1") == "1" and "error" not in result and tool_name in {"create_calendar_event", "update_calendar_event"}:
                         try:
                             learning_db = sqlite3.connect(database_path, timeout=15)
@@ -841,7 +906,7 @@ def api_stream_reply(conversation_id):
                                 "Your last response was not a valid assistant action. Try once more using exactly "
                                 '{"ultron_tool":"tool_name","arguments":{...}}. Use one of these exact tool names: '
                                 "read_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event, "
-                                "read_memory, save_memory. Return only the JSON object."
+                                "read_memory, save_memory, create_task, read_tasks. Return only the JSON object."
                             )},
                         ])
                         malformed_tool_retries += 1
@@ -854,8 +919,8 @@ def api_stream_reply(conversation_id):
                             model_messages.extend([
                                 {"role": "assistant", "content": round_text},
                                 {"role": "user", "content": (
-                                    "The user directly requested a calendar change. Your reply alone does not make or save the change. "
-                                    "Call the appropriate calendar tool now using the original request. Do not claim success unless the tool succeeds."
+                                    "The user directly requested a calendar or task change. Your reply alone does not make or save the change. "
+                                    "Call the appropriate calendar or task tool now using the original request. Do not claim success unless the tool succeeds."
                                 )},
                             ])
                             action_retries += 1

@@ -69,6 +69,7 @@ def create_app(test_config=None):
     from .blueprints.marketing import bp as marketing_bp
     from .blueprints.notifications import bp as notifications_bp
     from .blueprints.search import bp as search_bp
+    from .blueprints.tasks_projects import bp as tasks_projects_bp
     from .blueprints.settings import bp as settings_bp
 
     for blueprint in (
@@ -80,6 +81,7 @@ def create_app(test_config=None):
         documents_bp,
         knowledge_bp,
         calendar_bp,
+        tasks_projects_bp,
         automations_bp,
         evolution_bp,
         memory_bp,

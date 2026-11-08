@@ -325,6 +325,30 @@ def _save_memory(db, arguments):
     return result
 
 
+def _create_task(db, arguments):
+    args = _arguments(arguments, {"title", "notes", "priority", "category", "due_date", "due_time", "project_id"}, {"title"})
+    title = _text(args["title"], "Title", 240, required=True)
+    due_date = _date(args.get("due_date"), "Due date", optional=True)
+    due_time = _time(args.get("due_time"), "Due time")
+    priority = args.get("priority", "normal")
+    if priority not in ("low", "normal", "high"):
+        raise ToolError("Choose low, normal, or high priority.")
+    project_id = args.get("project_id")
+    if project_id is not None and not db.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone():
+        raise ToolError("Project not found.")
+    cursor = db.execute("INSERT INTO tasks(title,notes,priority,category,due_date,due_time,project_id,created_at) VALUES(?,?,?,?,?,?,?,?)", (title, _text(args.get("notes", ""), "Notes", 4000), priority, _text(args.get("category", "general"), "Category", 40), due_date, due_time, project_id, now_str()))
+    return {"task": _row_dict(db.execute("SELECT * FROM tasks WHERE id=?", (cursor.lastrowid,)).fetchone())}
+
+
+def _read_tasks(db, arguments):
+    args = _arguments(arguments, {"status"})
+    status = args.get("status")
+    if status not in (None, "pending", "completed"):
+        raise ToolError("Status must be pending or completed.")
+    rows = db.execute("SELECT * FROM tasks" + (" WHERE status=?" if status else "") + " ORDER BY due_date,due_time,id DESC LIMIT 100", (status,) if status else ()).fetchall()
+    return {"tasks": [dict(row) for row in rows]}
+
+
 
 def _web_search(db, arguments):
     args = _arguments(arguments, {"query", "max_results"}, {"query"})
@@ -427,6 +451,8 @@ def _create_local_file(db, arguments, workspace_root):
     }
 
 _TOOL_HANDLERS = {
+    "create_task": _create_task,
+    "read_tasks": _read_tasks,
     "web_search": _web_search,
     "fetch_webpage": _fetch_webpage,
     "read_local_file": _read_local_file,

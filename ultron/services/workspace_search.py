@@ -4,6 +4,8 @@ import re
 from datetime import date, datetime, timedelta
 
 SEARCH_TYPES = {
+    "tasks": ("task", "Task"),
+    "projects": ("project", "Project"),
     "documents": ("document", "Document"),
     "folders": ("folder", "Folder"),
     "conversations": ("conversation", "Conversation"),
@@ -65,6 +67,10 @@ def search_workspace(db, query, types=None, limit=40):
         for term in terms:
             query_params.extend((f"%{term}%", f"%{term}%"))
         sources = []
+        if "tasks" in requested:
+            sources.append(("task", "SELECT 'task',id,title,notes,created_at FROM tasks"))
+        if "projects" in requested:
+            sources.append(("project", "SELECT 'project',id,name,description || ' ' || notes,updated_at FROM projects"))
         if "documents" in requested:
             sources.append(("document", "SELECT 'document', id, title, substr(content,1,1200), updated_at FROM documents"))
         if "folders" in requested:
@@ -108,6 +114,16 @@ def _resolve(db, source, item_id, title, content):
             return None
         href = f"/chat/{item_id}"
         title, updated = row["title"], row["updated_at"]
+    elif source == "task":
+        row = db.execute("SELECT due_date,due_time,status,priority,created_at FROM tasks WHERE id=?", (item_id,)).fetchone()
+        if not row: return None
+        href, updated = "/tasks", row["created_at"]
+        metadata = {"due_date": row["due_date"], "due_time": row["due_time"], "status": row["status"], "priority": row["priority"]}
+    elif source == "project":
+        row = db.execute("SELECT status,deadline,updated_at FROM projects WHERE id=?", (item_id,)).fetchone()
+        if not row: return None
+        href, updated = f"/projects?project={item_id}", row["updated_at"]
+        metadata = {"status": row["status"], "deadline": row["deadline"]}
     elif source == "document":
         row = db.execute("SELECT updated_at FROM documents WHERE id=?", (item_id,)).fetchone()
         if not row: return None
@@ -197,6 +213,12 @@ def retrieve_context(db, query, max_items=6, max_characters=5000, include_memori
                 selected.append(item)
                 seen.add(key)
                 total += len(item["snippet"])
+        task_rows = db.execute("SELECT id,title,notes,created_at FROM tasks WHERE status='pending' AND due_date>=? AND due_date<? ORDER BY due_date,due_time LIMIT 30", (date_from, date_to)).fetchall()
+        for row in task_rows:
+            item = _resolve(db, "task", row["id"], row["title"], row["notes"])
+            key = ("task", item["id"])
+            if key not in seen and total < max_characters:
+                selected.append(item); seen.add(key); total += len(item["snippet"])
 
     if "unfinished" in lower_query or "incomplete document" in lower_query:
         rows = db.execute(

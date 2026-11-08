@@ -316,13 +316,17 @@ def _candidate(sentence):
 def extract_explicit_memories(db, text, auto_approve=False, max_items=5):
     """Capture up to ``max_items`` durable notes from one user message."""
     text = re.sub(r"\s+", " ", (text or "")).strip()
-    if len(text) < 8 or len(text) > 800:
-        return []
-    if is_sensitive(text):
+    # Chat messages can contain several paragraphs or a long request alongside
+    # a durable fact. Evaluate sentence-sized candidates independently so the
+    # message length (or an unrelated credential elsewhere in it) cannot cause
+    # us to discard every safe memory.
+    if len(text) < 8:
         return []
 
     stored = []
     for sentence in _SPLIT_SENTENCES.split(text):
+        if len(sentence) > 800 or is_sensitive(sentence):
+            continue
         candidate = _candidate(sentence)
         if candidate is None:
             continue

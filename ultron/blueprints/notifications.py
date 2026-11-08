@@ -48,13 +48,22 @@ def _schedule_due_reminders(db, now):
         if cursor.rowcount:
             new_ids.append(cursor.lastrowid)
 
+    tasks = db.execute("SELECT id,title,due_date,due_time FROM tasks WHERE status='pending' AND due_date IS NOT NULL AND due_time IS NOT NULL AND due_date<=? ORDER BY due_date,due_time", (now.strftime("%Y-%m-%d"),)).fetchall()
+    for task in tasks:
+        due_at = f"{task['due_date']} {task['due_time']}:00"
+        if due_at > current:
+            continue
+        cursor = db.execute("INSERT OR IGNORE INTO notifications(source_type,source_id,schedule_key,title,message,due_at,created_at) VALUES('task',?,?,?,?,?,?)", (task["id"], due_at, "Task reminder", task["title"], due_at, current))
+        if cursor.rowcount:
+            new_ids.append(cursor.lastrowid)
+
     db.commit()
     return new_ids
 
 
 def _notification_dict(row):
     item = dict(row)
-    item["href"] = "/calendar?view=day&date=" + item["schedule_key"][:10]
+    item["href"] = "/tasks" if item["source_type"] == "task" else "/calendar?view=day&date=" + item["schedule_key"][:10]
     item["read_url"] = f"/api/notifications/{item['id']}/read"
     return item
 
@@ -64,7 +73,7 @@ def api_list():
     db = get_db()
     new_ids = _schedule_due_reminders(db, datetime.now().replace(microsecond=0))
     rows = db.execute(
-        "SELECT * FROM notifications WHERE source_type = 'event' ORDER BY created_at DESC, id DESC LIMIT 40"
+        "SELECT * FROM notifications ORDER BY created_at DESC, id DESC LIMIT 40"
     ).fetchall()
     by_id = {row["id"]: row for row in rows}
     new_notifications = [_notification_dict(by_id[item_id]) for item_id in new_ids if item_id in by_id]
@@ -77,7 +86,7 @@ def api_list():
     merged = [_notification_dict(row) for row in rows] + local_notifications
     merged.sort(key=lambda item: (item["created_at"], item["id"]), reverse=True)
     merged = merged[:40]
-    unread = db.execute("SELECT COUNT(*) FROM notifications WHERE source_type='event' AND read_at IS NULL").fetchone()[0] + db.execute("SELECT COUNT(*) FROM local_notifications WHERE read_at IS NULL").fetchone()[0]
+    unread = db.execute("SELECT COUNT(*) FROM notifications WHERE read_at IS NULL").fetchone()[0] + db.execute("SELECT COUNT(*) FROM local_notifications WHERE read_at IS NULL").fetchone()[0]
     return jsonify(
         notifications=merged,
         new=new_notifications + [item for item in local_notifications if item["created_at"] >= datetime.now().strftime("%Y-%m-%d %H:%M")],
