@@ -24,6 +24,8 @@ from ..db import get_db
 from ..helpers import get_settings, now_str
 from ..services import ollama, web_search, workspace_tools
 from ..services.workspace_tools import relevant_memories
+from ..services.learning import retrieve_experiences, retrieve_failures, record_success
+from ..services.memory_extraction import extract_explicit_memory
 from ..services.workspace_search import retrieve_context
 
 bp = Blueprint("chat", __name__)
@@ -534,6 +536,23 @@ def _system_prompt(query):
                 "\n\nRelevant saved memory notes (use only when applicable):\n"
                 + "\n".join(lines)
             )
+    experiences = retrieve_experiences(get_db(), query, limit=2)
+    if experiences:
+        lines = []
+        budget = 2200
+        for item in experiences:
+            text = f"- {item['title']} ({item['successful_uses']} confirmed uses): {item['successful_methods']}"
+            if len(text) > budget:
+                text = text[:budget]
+            lines.append(text)
+            budget -= len(text)
+            if budget <= 0:
+                break
+        prompt += "\n\nRelevant confirmed workflow experiences (reference only when applicable):\n" + "\n".join(lines)
+    failures = retrieve_failures(get_db(), query, limit=2)
+    if failures:
+        cautions = [f"- Prior failure (not a confirmed solution): {item['details'][:450]}" for item in failures]
+        prompt += "\n\nRelevant prior failures; avoid repeating the same failed action and do not treat these as resolved:\n" + "\n".join(cautions)
     return prompt
 
 
@@ -568,6 +587,12 @@ def _persist_reply(database_path, conversation_id, reply, finished_at, document_
             "UPDATE conversations SET updated_at = ? WHERE id = ?",
             (finished_at, conversation_id),
         )
+        extraction_setting = connection.execute("SELECT value FROM settings WHERE key='memory_auto_extract'").fetchone()
+        learning_setting = connection.execute("SELECT value FROM settings WHERE key='automatic_learning'").fetchone()
+        if (not extraction_setting or extraction_setting[0] == "1") and (not learning_setting or learning_setting[0] == "1"):
+            user_row = connection.execute("SELECT content FROM messages WHERE conversation_id=? AND role='user' ORDER BY id DESC LIMIT 1", (conversation_id,)).fetchone()
+            if user_row:
+                extract_explicit_memory(connection, user_row[0])
         connection.commit()
         return cursor.lastrowid
     finally:
@@ -716,6 +741,14 @@ def api_stream_reply(conversation_id):
                     current_app.config.get("ULTRON_WORKSPACE_ROOT"),
                 )
                 task = result["task"]
+                if settings.get("automatic_learning", "1") == "1":
+                    learning_db = sqlite3.connect(database_path, timeout=15)
+                    try:
+                        learning_db.row_factory = sqlite3.Row
+                        record_success(learning_db, latest_user_message, task["title"], "task management", ["Create task with validated local workspace tool"], ["create_task"], f"Task {task['id']} was created successfully.", {"due_date": task.get("due_date"), "priority": task.get("priority")})
+                        learning_db.commit()
+                    finally:
+                        learning_db.close()
                 reply = f"Added “{task['title']}” to your tasks."
             except workspace_tools.ToolError as error:
                 reply = f"I couldn't add that task: {error}"
@@ -742,6 +775,14 @@ def api_stream_reply(conversation_id):
                     current_app.config.get("ULTRON_WORKSPACE_ROOT"),
                 )
                 saved_event = result["event"]
+                if settings.get("automatic_learning", "1") == "1":
+                    learning_db = sqlite3.connect(database_path, timeout=15)
+                    try:
+                        learning_db.row_factory = sqlite3.Row
+                        record_success(learning_db, latest_user_message, saved_event["title"], "calendar management", ["Create calendar event with validated local workspace tool"], ["create_calendar_event"], f"Event {saved_event['id']} was created successfully.", {"start_at": saved_event.get("start_at")})
+                        learning_db.commit()
+                    finally:
+                        learning_db.close()
                 reply = f"Added “{saved_event['title']}” to your calendar for {saved_event['start_at'][:16]}."
             except workspace_tools.ToolError as error:
                 reply = f"I couldn't add that calendar event: {error}"
@@ -781,6 +822,7 @@ def api_stream_reply(conversation_id):
             tool_calls = 0
             malformed_tool_retries = 0
             action_retries = 0
+            failed_tool_signatures = set()
             requires_productivity_mutation = _requests_productivity_mutation(latest_user_message)
             productivity_mutation_succeeded = False
             while True:
@@ -827,25 +869,52 @@ def api_stream_reply(conversation_id):
                             "instruction": "Use the matching calendar or task tool for the user's original request. The rejected action was not saved.",
                         }
                     else:
-                        try:
-                            result = workspace_tools.execute_tool(
-                                database_path, tool_name, arguments,
-                                current_app.config.get("ULTRON_WORKSPACE_ROOT"),
-                            )
-                        except workspace_tools.ToolError as error:
+                        signature = (tool_name, json.dumps(arguments, sort_keys=True, ensure_ascii=False))
+                        if signature in failed_tool_signatures:
+                            failed_tool_signatures.add(signature)
                             result = {
-                                "error": str(error),
+                                "error": "This exact action already failed in this request. Change the approach or ask the user for the missing detail; do not repeat it.",
                                 "instruction": (
                                     "Correct this internally using the user's original natural-language request and local date context. "
-                                    "Never ask the user for a date format. If the date was not specified, omit the optional date; "
-                                    "if it is genuinely unclear, ask what day they mean in plain language."
+                                    "Choose a materially different action or ask for the missing information in plain language."
                                 ),
                             }
+                        else:
+                            try:
+                                result = workspace_tools.execute_tool(
+                                    database_path, tool_name, arguments,
+                                    current_app.config.get("ULTRON_WORKSPACE_ROOT"),
+                                )
+                            except workspace_tools.ToolError as error:
+                                failed_tool_signatures.add(signature)
+                                result = {
+                                    "error": str(error),
+                                    "instruction": (
+                                        "Correct this internally using the user's original natural-language request and local date context. "
+                                        "Never ask the user for a date format. If the date was not specified, omit the optional date; "
+                                        "if it is genuinely unclear, ask what day they mean in plain language."
+                                    ),
+                                }
+                                if settings.get("automatic_learning", "1") == "1":
+                                    failure_db = sqlite3.connect(database_path, timeout=15)
+                                    try:
+                                        failure_db.execute("INSERT INTO learning_history(record_type,title,details,created_at) VALUES('task_failure',?,?,?)", (tool_name, f"Request: {latest_user_message[:800]}\nFailed action: {json.dumps(arguments, ensure_ascii=False)[:800]}\nError: {str(error)[:800]}", now_str()))
+                                        failure_db.commit()
+                                    finally:
+                                        failure_db.close()
                     if (
                         tool_name in {"create_task", "update_task", "delete_task", "create_calendar_event", "update_calendar_event", "delete_calendar_event"}
                         and "error" not in result
                     ):
                         productivity_mutation_succeeded = True
+                    if settings.get("automatic_learning", "1") == "1" and "error" not in result and tool_name in {"create_task", "update_task", "create_calendar_event", "update_calendar_event"}:
+                        try:
+                            learning_db = sqlite3.connect(database_path, timeout=15)
+                            learning_db.row_factory = sqlite3.Row
+                            record_success(learning_db, latest_user_message, latest_user_message[:120], "task management" if "task" in tool_name else "calendar management", [f"Executed {tool_name} with validated local workspace tool"], [tool_name], f"Backend confirmed {tool_name} succeeded.", arguments)
+                            learning_db.commit()
+                        finally:
+                            learning_db.close()
                     model_messages.extend([
                         {"role": "assistant", "content": round_text},
                         {"role": "user", "content": (

@@ -1,6 +1,8 @@
 """ultron application factory."""
 
 import os
+import threading
+import time
 
 from flask import Flask, jsonify, render_template, request
 
@@ -8,6 +10,30 @@ from .constants import APP_VERSION, DEFAULT_SETTINGS
 from .db import init_app as init_db_app
 from .db import init_db
 from .helpers import register_helpers
+
+_scheduler_thread = None
+_scheduler_guard = threading.Lock()
+
+
+def _start_scheduler(app):
+    global _scheduler_thread
+    if app.config.get("TESTING") or (app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true"):
+        return
+    with _scheduler_guard:
+        if _scheduler_thread and _scheduler_thread.is_alive():
+            return
+
+        def loop():
+            from .blueprints.automations import run_due_jobs
+            while True:
+                try:
+                    run_due_jobs(app)
+                except Exception:
+                    app.logger.exception("Automation scheduler iteration failed")
+                time.sleep(20)
+
+        _scheduler_thread = threading.Thread(target=loop, name="ultron-automation-scheduler", daemon=True)
+        _scheduler_thread.start()
 
 
 def create_app(test_config=None):
@@ -33,8 +59,10 @@ def create_app(test_config=None):
     register_helpers(app)
 
     from .blueprints.calendar import bp as calendar_bp
+    from .blueprints.automations import bp as automations_bp
     from .blueprints.chat import bp as chat_bp
     from .blueprints.documents import bp as documents_bp
+    from .blueprints.evolution import bp as evolution_bp
     from .blueprints.home import bp as home_bp
     from .blueprints.knowledge import bp as knowledge_bp
     from .blueprints.memory import bp as memory_bp
@@ -55,6 +83,8 @@ def create_app(test_config=None):
         knowledge_bp,
         projects_bp,
         calendar_bp,
+        automations_bp,
+        evolution_bp,
         tasks_bp,
         memory_bp,
         settings_bp,
@@ -75,5 +105,7 @@ def create_app(test_config=None):
 
     with app.app_context():
         init_db()
+
+    _start_scheduler(app)
 
     return app

@@ -152,5 +152,80 @@ CREATE TABLE IF NOT EXISTS memories (
     category TEXT NOT NULL DEFAULT 'general',
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    approved INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS experiences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'general productivity',
+    original_request TEXT NOT NULL,
+    task_description TEXT NOT NULL DEFAULT '',
+    execution_steps TEXT NOT NULL DEFAULT '[]',
+    tools_used TEXT NOT NULL DEFAULT '[]',
+    successful_methods TEXT NOT NULL DEFAULT '',
+    mistakes_solutions TEXT NOT NULL DEFAULT '',
+    parameters TEXT NOT NULL DEFAULT '{}',
+    confidence REAL NOT NULL DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
+    successful_uses INTEGER NOT NULL DEFAULT 1,
+    archived INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_experiences_category ON experiences(category, archived, last_used_at DESC);
+
+CREATE TABLE IF NOT EXISTS learning_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    details TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS automations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    instruction TEXT NOT NULL,
+    schedule_type TEXT NOT NULL CHECK (schedule_type IN ('once','daily','weekly','monthly','custom')),
+    schedule_value TEXT NOT NULL DEFAULT '{}',
+    timezone TEXT NOT NULL DEFAULT 'Asia/Jakarta',
+    next_run_at TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_automations_due ON automations(enabled, next_run_at);
+
+CREATE TABLE IF NOT EXISTS automation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    automation_id INTEGER REFERENCES automations(id) ON DELETE SET NULL,
+    automation_name TEXT NOT NULL,
+    trigger_type TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('running','completed','failed')),
+    actions TEXT NOT NULL DEFAULT '[]',
+    result TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    experience_id INTEGER REFERENCES experiences(id) ON DELETE SET NULL,
+    scheduled_for TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_started ON automation_runs(started_at DESC);
+
+CREATE TABLE IF NOT EXISTS local_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    read_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_local_notifications_created ON local_notifications(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS scheduler_lease (
+    id INTEGER PRIMARY KEY CHECK (id=1),
+    lease_until TEXT NOT NULL DEFAULT ''
+);
+INSERT OR IGNORE INTO scheduler_lease(id,lease_until) VALUES(1,'');

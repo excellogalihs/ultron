@@ -10,7 +10,7 @@
     <p class="page-head__desc">Facts and preferences ultron can carry into local conversations.</p>
   </div>
   <div class="page-head__actions">
-    <span class="count-badge">{{ counts.active }} ACTIVE</span>
+    <span class="count-badge">{{ counts.active }} ACTIVE · {{ counts.pending }} PENDING</span>
   </div>
 </div>
 
@@ -48,7 +48,7 @@
       {% for memory in memories %}
       <article class="panel memory-card{% if not memory.active %} is-inactive{% endif %}" id="memory-{{ memory.id }}" data-memory-id="{{ memory.id }}">
         <div class="memory-card__head">
-          <span class="tag tag--accent">{{ memory.category|upper }}</span>
+          <span class="tag tag--accent">{{ memory.category|upper }}</span>{% if not memory.approved %}<span class="tag">AWAITING REVIEW</span>{% endif %}
           <button class="switch{% if memory.active %} is-on{% endif %}" type="button" data-memory-toggle data-active="{{ memory.active }}" role="switch" aria-checked="{{ 'true' if memory.active else 'false' }}" aria-label="{{ 'Deactivate' if memory.active else 'Activate' }} memory">
             <span class="switch__thumb"></span>
           </button>
@@ -57,6 +57,7 @@
         <div class="memory-card__foot">
           <span>{{ 'ACTIVE' if memory.active else 'PAUSED' }} · {{ memory.updated_at|humanize }}</span>
           <div class="memory-card__actions">
+            {% if not memory.approved %}<button class="btn btn--small" type="button" data-memory-approve>Approve</button>{% endif %}
             <button class="icon-btn" type="button" data-memory-edit data-memory-content="{{ memory.content }}" data-memory-category="{{ memory.category }}" aria-label="Edit memory">{{ icon('edit', 15) }}</button>
             <button class="icon-btn icon-btn--danger" type="button" data-memory-delete aria-label="Delete memory">{{ icon('trash', 15) }}</button>
           </div>

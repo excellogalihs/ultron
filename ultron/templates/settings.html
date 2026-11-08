@@ -162,6 +162,14 @@
         </span>
         <input class="switch-input" type="checkbox" id="use_memory" name="use_memory" value="1"{% if settings.use_memory == '1' %} checked{% endif %}>
       </label>
+      <label class="switch-row" for="automatic_learning">
+        <span class="switch-row__copy"><span class="switch-row__title">Automatic learning</span><span class="switch-row__desc">Allow ultron to record confirmed successful workflows and suggest explicit memory statements.</span></span>
+        <input class="switch-input" type="checkbox" id="automatic_learning" name="automatic_learning" value="1"{% if settings.automatic_learning == '1' %} checked{% endif %}>
+      </label>
+      <label class="switch-row" for="memory_auto_extract">
+        <span class="switch-row__copy"><span class="switch-row__title">Suggest memories from conversations</span><span class="switch-row__desc">Only explicit preferences, reusable instructions, and ongoing project statements are suggested; suggestions stay inactive until approved.</span></span>
+        <input class="switch-input" type="checkbox" id="memory_auto_extract" name="memory_auto_extract" value="1"{% if settings.memory_auto_extract == '1' %} checked{% endif %}>
+      </label>
     </section>
 
     <section class="panel settings-section settings-section--wide">

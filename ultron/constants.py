@@ -34,6 +34,8 @@ DEFAULT_SETTINGS = {
         "If you do not know something, say so instead of inventing an answer."
     ),
     "use_memory": "1",
+    "automatic_learning": "1",
+    "memory_auto_extract": "1",
     "temperature": "0.7",
     "theme": "dark",
     "accent": "violet",

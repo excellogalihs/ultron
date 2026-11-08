@@ -27,6 +27,7 @@ def index():
     counts = {
         "total": len(memories),
         "active": sum(1 for memory in memories if memory["active"]),
+        "pending": sum(1 for memory in memories if not memory["approved"]),
     }
     return render_template(
         "memory.html",
@@ -101,6 +102,12 @@ def api_update(memory_id):
     if "active" in data:
         fields.append("active = ?")
         params.append(1 if data.get("active") else 0)
+
+    if "approved" in data:
+        fields.append("approved = ?")
+        params.append(1 if data.get("approved") else 0)
+        if data.get("approved"):
+            fields.append("active = 1")
 
     if not fields:
         return jsonify(error="Nothing to update."), 400

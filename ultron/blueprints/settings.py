@@ -42,6 +42,11 @@ TABLES = (
     "tasks",
     "notifications",
     "memories",
+    "experiences",
+    "learning_history",
+    "automations",
+    "automation_runs",
+    "local_notifications",
     "knowledge_collections",
     "knowledge_files",
     "project_documents",
@@ -132,6 +137,8 @@ def save():
         system_prompt = system_prompt[:4000]
 
     use_memory = "1" if form.get("use_memory") == "1" else "0"
+    automatic_learning = "1" if form.get("automatic_learning") == "1" else "0"
+    memory_auto_extract = "1" if form.get("memory_auto_extract") == "1" else "0"
 
     theme = form.get("theme") or DEFAULT_SETTINGS["theme"]
     if theme not in THEMES:
@@ -179,6 +186,8 @@ def save():
     _upsert(db, "temperature", temperature)
     _upsert(db, "system_prompt", system_prompt)
     _upsert(db, "use_memory", use_memory)
+    _upsert(db, "automatic_learning", automatic_learning)
+    _upsert(db, "memory_auto_extract", memory_auto_extract)
     _upsert(db, "theme", theme)
     _upsert(db, "accent", accent)
     _upsert(db, "font", font)

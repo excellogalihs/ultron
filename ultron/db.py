@@ -46,6 +46,7 @@ def init_db():
             "due_time": "TEXT",
             "project_id": "INTEGER REFERENCES projects(id) ON DELETE SET NULL",
         },
+        "memories": {"approved": "INTEGER NOT NULL DEFAULT 1"},
     }
     for table, columns in migrations.items():
         existing = {

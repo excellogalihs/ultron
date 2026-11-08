@@ -4,7 +4,7 @@ A local-first AI workspace built for low-end computers. ultron is a lightweight 
 
 ```
 ┌─ ULTRON ───────────────────────────────────────────────────────────────────┐
-│  Home  Chat  Documents  Calendar  Tasks  Memory  Settings                  │
+│  Home  Chat  Documents  Calendar  Tasks  Memory  Automations  Evolution    │
 │                                                                            │
 │  local SQLite  ──  Flask  ──  Ollama (gemma3:1b / 4b)  ──  Web Search     │
 └────────────────────────────────────────────────────────────────────────────┘
@@ -32,10 +32,13 @@ A local-first AI workspace built for low-end computers. ultron is a lightweight 
 - **Calendar** — monthly, weekly, and daily views with local event creation, editing, deletion, descriptions, times, categories, upcoming/today dashboard sections, and event reminders.
 - **Tasks** — add, edit, categorize, complete/reopen, and delete tasks with priority, notes, and due dates; assistant can manage the full task list and due reminders.
 - **Memory** — store facts/preferences, edit and delete them, and toggle their use. Only a small keyword-ranked subset relevant to the current request is included in AI context; the entire memory table is never sent.
+- **Automations** — save one-time, daily, weekly, monthly, or interval routines in SQLite. A single lightweight local scheduler recovers due routines after restart, uses IANA timezones, and records completed/failed runs. Current routines produce read-only local summaries for calendar events and tasks; unsupported instructions fail visibly. Each routine run also creates an in-app notification.
+- **Evolution** — browse, edit, archive, and delete reusable task experiences. Confirmed task and calendar writes are recorded and matched with bounded keyword retrieval; failed task/calendar tool calls are kept as cautions and identical failed calls are not executed repeatedly in one request.
+- **Memory suggestions** — explicit preference, reusable-instruction, and ongoing-project statements can create inactive suggestions for review. Suggestions avoid credential-like statements and require approval before becoming active. Automatic learning and memory suggestions can be switched off in Settings.
 - **Customization & Themes** — choose between Dark Onyx, OLED Black, Light Paper, and Nord Dim themes, multiple accent colors (Violet, Emerald, Cyan, Amber, Rose, Monochrome), and typography (JetBrains Mono, Modern Sans, IBM Plex Mono).
 - **Settings, Backup & Restore** — customize operator name, default model, Ollama URL, temperature, system prompt, memory, web search, reminder timing, and chat shortcuts. Export full workspace JSON backups or restore previous backups with atomic SQLite rollback protection.
 
-All data lives in `instance/ultron.db` and never leaves the machine. The app binds to `127.0.0.1` by default. Workspace file operations are strictly scoped to the workspace root (`ULTRON_WORKSPACE_ROOT` or project directory by default); hidden files, dependency/build directories, symlinks, and oversized files are skipped.
+All data lives in `instance/ultron.db` and never leaves the machine. The app binds to `127.0.0.1` by default. Workspace file operations are strictly scoped to the workspace root (`ULTRON_WORKSPACE_ROOT` or project directory by default); hidden files, dependency/build directories, symlinks, and oversized files are skipped. The automation scheduler runs only while the Flask app is running.
 
 ## Requirements
 

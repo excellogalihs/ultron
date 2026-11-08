@@ -78,6 +78,7 @@ def _schedule_due_reminders(db, now):
 def _notification_dict(row):
     item = dict(row)
     item["href"] = "/tasks?view=pending" if item["source_type"] == "task" else "/calendar?view=day&date=" + item["schedule_key"][:10]
+    item["read_url"] = f"/api/notifications/{item['id']}/read"
     return item
 
 
@@ -90,12 +91,41 @@ def api_list():
     ).fetchall()
     by_id = {row["id"]: row for row in rows}
     new_notifications = [_notification_dict(by_id[item_id]) for item_id in new_ids if item_id in by_id]
-    unread = db.execute("SELECT COUNT(*) FROM notifications WHERE read_at IS NULL").fetchone()[0]
+    local_rows = db.execute("SELECT * FROM local_notifications ORDER BY created_at DESC,id DESC LIMIT 40").fetchall()
+    local_notifications = []
+    for row in local_rows:
+        item = dict(row)
+        item.update(source_type=row["category"].upper(), due_at=row["created_at"], schedule_key="", href="/automations" if row["category"] == "automation" else "/evolution", read_url=f"/api/notifications/local/{row['id']}/read")
+        local_notifications.append(item)
+    merged = [_notification_dict(row) for row in rows] + local_notifications
+    merged.sort(key=lambda item: (item["created_at"], item["id"]), reverse=True)
+    merged = merged[:40]
+    unread = db.execute("SELECT COUNT(*) FROM notifications WHERE read_at IS NULL").fetchone()[0] + db.execute("SELECT COUNT(*) FROM local_notifications WHERE read_at IS NULL").fetchone()[0]
     return jsonify(
-        notifications=[_notification_dict(row) for row in rows],
-        new=new_notifications,
+        notifications=merged,
+        new=new_notifications + [item for item in local_notifications if item["created_at"] >= datetime.now().strftime("%Y-%m-%d %H:%M")],
         unread=unread,
     )
+
+
+@bp.post("/api/notifications/local/<int:notification_id>/read")
+def api_local_read(notification_id):
+    db = get_db()
+    cursor = db.execute("UPDATE local_notifications SET read_at=COALESCE(read_at,?) WHERE id=?", (now_str(), notification_id))
+    if not cursor.rowcount:
+        return jsonify(error="Notification not found."), 404
+    db.commit()
+    return jsonify(ok=True)
+
+
+@bp.delete("/api/notifications/local/<int:notification_id>")
+def api_local_delete(notification_id):
+    db = get_db()
+    cursor = db.execute("DELETE FROM local_notifications WHERE id=?", (notification_id,))
+    if not cursor.rowcount:
+        return jsonify(error="Notification not found."), 404
+    db.commit()
+    return jsonify(ok=True)
 
 
 @bp.post("/api/notifications/<int:notification_id>/read")
@@ -114,5 +144,6 @@ def api_read(notification_id):
 def api_read_all():
     db = get_db()
     db.execute("UPDATE notifications SET read_at = COALESCE(read_at, ?)", (now_str(),))
+    db.execute("UPDATE local_notifications SET read_at=COALESCE(read_at,?)", (now_str(),))
     db.commit()
     return jsonify(ok=True, unread=0)

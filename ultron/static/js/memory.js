@@ -68,6 +68,16 @@
       return;
     }
 
+    const approve = event.target.closest("[data-memory-approve]");
+    if (approve) {
+      approve.disabled = true;
+      try {
+        await Ultron.api(`/api/memories/${memoryId}`, { method: "PATCH", body: { approved: true } });
+        window.location.reload();
+      } catch (error) { approve.disabled = false; Ultron.toast(error.message, "error"); }
+      return;
+    }
+
     const edit = event.target.closest("[data-memory-edit]");
     if (edit) {
       editId.value = memoryId;
