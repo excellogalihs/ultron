@@ -408,10 +408,11 @@ def _read_calendar_events(db, arguments):
 
 def _create_calendar_event(db, arguments):
     allowed = {"title", "date", "start_time", "end_time", "description", "category"}
-    args = _arguments(arguments, allowed, {"title", "date", "start_time"})
+    args = _arguments(arguments, allowed, {"title", "date"})
     title = _text(args["title"], "Event title", 200, required=True)
     day = _date(args["date"], "Event date")
-    start = _time(args.get("start_time"), "Start time")
+    # Match the calendar form/API default so a date-only event can be saved.
+    start = _time(args.get("start_time"), "Start time", fallback="09:00")
     end = _time(args.get("end_time"), "End time")
     description = _text(args.get("description", ""), "Event description", 2000)
     category = args.get("category", "general")

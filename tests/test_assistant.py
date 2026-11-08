@@ -91,6 +91,12 @@ class WorkspaceToolTests(unittest.TestCase):
             {"date_from": "2026-11-12", "date_to": "2026-11-12"},
         )["events"]
         self.assertEqual(events[0]["id"], event["id"])
+        default_time_event = execute_tool(
+            str(self.database),
+            "create_calendar_event",
+            {"title": "Unscheduled review", "date": "2026-11-13"},
+        )["event"]
+        self.assertEqual(default_time_event["start_at"], "2026-11-13 09:00:00")
 
         saved = execute_tool(
             str(self.database),
@@ -374,6 +380,53 @@ class LiveOllamaIntegrationTests(unittest.TestCase):
         self.assertIn("integration notes", tasks[0]["title"].casefold())
         self.assertEqual(tasks[0]["due_date"], "2026-12-12")
 class ChatBehaviorTests(unittest.TestCase):
+    def test_clear_calendar_request_saves_without_model_tool_call(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        app = create_app(
+            {"TESTING": True, "DATABASE": str(Path(temporary.name) / "direct-calendar.db")}
+        )
+        client = app.test_client()
+        day = (date.today() + timedelta(days=1)).isoformat()
+        conversation = client.post(
+            "/api/conversations",
+            json={"first_message": "Add a dentist appointment to my calendar tomorrow."},
+        ).get_json()
+
+        with patch.object(chat_blueprint.ollama, "stream_chat", side_effect=AssertionError("model should not be needed")):
+            response = client.post(
+                f"/api/conversations/{conversation['id']}/stream", json={}, buffered=True
+            )
+
+        events = client.get("/api/events").get_json()["events"]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["title"], "Dentist appointment")
+        self.assertEqual(events[0]["start_at"], f"{day} 09:00:00")
+        self.assertIn("Added “Dentist appointment” to your calendar", response.get_data(as_text=True))
+
+    def test_day_first_month_date_calendar_request(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        app = create_app(
+            {"TESTING": True, "DATABASE": str(Path(temporary.name) / "day-first-calendar.db")}
+        )
+        client = app.test_client()
+        conversation = client.post(
+            "/api/conversations",
+            json={"first_message": "Add Competition Results Announcements on my calendar on 15 November 2026 at 18:00."},
+        ).get_json()
+
+        with patch.object(chat_blueprint.ollama, "stream_chat", side_effect=AssertionError("model should not be needed")):
+            response = client.post(
+                f"/api/conversations/{conversation['id']}/stream", json={}, buffered=True
+            )
+
+        events = client.get("/api/events").get_json()["events"]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["title"], "Competition Results Announcements")
+        self.assertEqual(events[0]["start_at"], "2026-11-15 18:00:00")
+        self.assertIn("Added “Competition Results Announcements” to your calendar", response.get_data(as_text=True))
+
     def test_plain_language_task_request_is_saved_without_model_tool_json(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -451,6 +504,47 @@ class ChatBehaviorTests(unittest.TestCase):
             "The user directly requested a calendar or task change" in message["content"]
             for message in calls[1]
         ))
+
+    def test_calendar_request_cannot_be_satisfied_by_creating_a_task(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        app = create_app(
+            {"TESTING": True, "DATABASE": str(Path(temporary.name) / "calendar-action.db")}
+        )
+        client = app.test_client()
+        day = (date.today() + timedelta(days=1)).isoformat()
+        conversation = client.post(
+            "/api/conversations",
+            json={"first_message": "Add a dentist checkup to my calendar."},
+        ).get_json()
+        calls = []
+
+        def fake_stream_chat(**kwargs):
+            calls.append(kwargs["messages"])
+            if len(calls) == 1:
+                yield json.dumps({
+                    "ultron_tool": "create_task",
+                    "arguments": {"title": "Dentist checkup", "due_date": day},
+                })
+            elif len(calls) == 2:
+                yield json.dumps({
+                    "ultron_tool": "create_calendar_event",
+                    "arguments": {"title": "Dentist checkup", "date": day, "start_time": "10:00"},
+                })
+            else:
+                yield "Added the dentist checkup to your calendar."
+
+        with patch.object(chat_blueprint.ollama, "stream_chat", fake_stream_chat):
+            response = client.post(
+                f"/api/conversations/{conversation['id']}/stream", json={}, buffered=True
+            )
+
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(client.get("/api/tasks").get_json()["tasks"], [])
+        events = client.get("/api/events").get_json()["events"]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["start_at"], f"{day} 10:00:00")
+        self.assertIn("Added the dentist checkup to your calendar.", response.get_data(as_text=True))
 
     def test_offline_search_returns_browser_fallback(self):
         reply = chat_blueprint._format_web_search_result(
@@ -650,12 +744,12 @@ class ProductivityWorkspaceTests(unittest.TestCase):
         ).get_json()["task"]
         self.assertEqual(updated["category"], "work")
 
-        with self.assertRaises(ToolError):
-            execute_tool(
-                self.app.config["DATABASE"],
-                "create_calendar_event",
-                {"title": "Unclear", "date": "2026-11-08"},
-            )
+        default_event = execute_tool(
+            self.app.config["DATABASE"],
+            "create_calendar_event",
+            {"title": "Unclear", "date": "2026-11-08"},
+        )["event"]
+        self.assertEqual(default_event["start_at"], "2026-11-08 09:00:00")
 
     def test_dashboard_separates_today_from_upcoming_events(self):
         today = date.today()

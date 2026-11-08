@@ -211,12 +211,29 @@
 
     const textSpan = document.createElement("span");
     textSpan.className = "msg__text";
+    textSpan.hidden = true;
+    const thinking = document.createElement("span");
+    thinking.className = "msg__thinking";
+    thinking.setAttribute("role", "status");
+    const thinkingLabel = document.createElement("span");
+    thinkingLabel.className = "msg__thinking-label";
+    thinkingLabel.textContent = "Thinking";
+    const visualizer = document.createElement("span");
+    visualizer.className = "msg__visualizer";
+    visualizer.setAttribute("aria-hidden", "true");
+    for (let index = 0; index < 3; index += 1) {
+      visualizer.appendChild(document.createElement("i"));
+    }
+    thinking.append(thinkingLabel, visualizer);
     const cursor = document.createElement("span");
     cursor.className = "msg__cursor";
+    cursor.hidden = true;
     cursor.setAttribute("aria-hidden", "true");
 
-    message.body.append(textSpan, cursor);
+    message.body.append(thinking, textSpan, cursor);
     message.textSpan = textSpan;
+    message.thinking = thinking;
+    message.thinkingLabel = thinkingLabel;
     message.cursor = cursor;
     scrollBottom(true);
     return message;
@@ -265,11 +282,19 @@
 
         if (event) {
           if (event.event === "token") {
+            if (event.data.token && target.thinking) {
+              target.thinking.remove();
+              target.thinking = null;
+              target.textSpan.hidden = false;
+              target.cursor.hidden = false;
+            }
             received += event.data.token || "";
             target.textSpan.textContent = received;
             scrollBottom();
           } else if (event.event === "status") {
-            target.textSpan.textContent = event.data.message || "Working with your workspace…";
+            if (target.thinkingLabel) {
+              target.thinkingLabel.textContent = event.data.message || "Working with your workspace…";
+            }
             scrollBottom();
           } else if (event.event === "meta") {
             applyTitle(event.data.title);
@@ -283,6 +308,8 @@
             if (event.data.id) target.wrap.dataset.messageId = event.data.id;
             if (event.data.document_id) target.wrap.dataset.documentId = event.data.document_id;
             target.cursor.remove();
+            target.thinking?.remove();
+            target.thinking = null;
             target.wrap.classList.remove("is-streaming");
             renderAssistant(target.wrap, received);
             applyTitle(event.data.title);
@@ -304,6 +331,8 @@
 
   const showStreamError = (target, message) => {
     target.cursor?.remove();
+    target.thinking?.remove();
+    target.textSpan.hidden = false;
     target.wrap.classList.add("msg--error");
     target.roleEl.textContent = "SYSTEM";
     target.time.textContent = "error";

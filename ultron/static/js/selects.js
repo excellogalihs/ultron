@@ -185,7 +185,10 @@
     select.setAttribute("aria-hidden", "true");
     parent.insertBefore(widget, select);
     widget.append(select, trigger);
-    document.body.appendChild(menu);
+    // A native dialog is promoted to the browser's top layer. A menu mounted
+    // under <body> sits behind that layer, so keep dialog selects inside it.
+    const menuHost = select.closest("dialog") || document.body;
+    menuHost.appendChild(menu);
 
     Object.defineProperty(select, "value", {
       configurable: true,

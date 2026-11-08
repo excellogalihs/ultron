@@ -77,6 +77,22 @@ def _requests_productivity_mutation(text):
     return bool(target and action)
 
 
+def _tool_matches_productivity_request(tool_name, text):
+    """Prevent a successful task action from being reported as a calendar change (or vice versa)."""
+    normalized = (text or "").casefold()
+    asks_calendar = bool(re.search(r"\b(calendar|events?)\b", normalized))
+    asks_tasks = bool(re.search(r"\b(tasks?|to-do list|task list)\b", normalized))
+    calendar_tool = tool_name in {
+        "read_calendar_events", "create_calendar_event", "update_calendar_event", "delete_calendar_event"
+    }
+    task_tool = tool_name in {"read_tasks", "create_task", "update_task", "delete_task"}
+    if asks_calendar and not asks_tasks and task_tool:
+        return False
+    if asks_tasks and not asks_calendar and calendar_tool:
+        return False
+    return True
+
+
 def _simple_task_request(text):
     """Turn a clear, single-task request into tool arguments without depending on model JSON."""
     request_text = (text or "").strip()
@@ -169,6 +185,76 @@ def _parse_month_day(value, today):
         except ValueError:
             continue
     raise ValueError("Date could not be interpreted")
+
+
+def _simple_calendar_request(text):
+    """Parse a clear single event request without depending on local model tool formatting."""
+    match = re.match(
+        r"^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?"
+        r"(?:add|create|make|put|schedule|book)\s+(?P<details>.+?)\s*[.!?]*$",
+        (text or "").strip(),
+        re.IGNORECASE,
+    )
+    if not match or not re.search(r"\b(calendar|event|appointment|meeting)\b", text, re.IGNORECASE):
+        return None
+
+    details = re.sub(
+        r"\s+(?:to|in|on|for)\s+(?:my\s+)?(?:calendar|schedule)\b", "", match.group("details"), flags=re.IGNORECASE
+    ).strip()
+    today = date.today()
+    event_date = None
+    date_patterns = (
+        (r"\bday after tomorrow\b", lambda found: today + timedelta(days=2)),
+        (r"\btomorrow\b", lambda found: today + timedelta(days=1)),
+        (r"\btoday\b", lambda found: today),
+        (r"\b(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+         lambda found: today + timedelta(days=(
+             ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday").index(found.group(1).casefold())
+             - today.weekday()
+         ) % 7 or (7 if found.group(0).casefold().startswith("next") else 0))),
+        (r"\b(\d{4}-\d{2}-\d{2})\b", lambda found: date.fromisoformat(found.group(1))),
+        (r"\b(\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4})\b",
+         lambda found: datetime.strptime(found.group(1), "%d %B %Y").date()
+         if len(found.group(1).split()[1]) > 3 else datetime.strptime(found.group(1), "%d %b %Y").date()),
+        (r"\b((?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,?\s+\d{4})?)\b",
+         lambda found: _parse_month_day(found.group(1), today)),
+    )
+    for pattern, resolve in date_patterns:
+        found = re.search(pattern, details, re.IGNORECASE)
+        if not found:
+            continue
+        try:
+            event_date = resolve(found).isoformat()
+        except ValueError:
+            return None
+        details = details[:found.start()] + " " + details[found.end():]
+        break
+    if not event_date:
+        return None
+
+    time_match = re.search(
+        r"\b(?:at\s+)?(?:(\d{1,2})(?::([0-5]\d))?\s*(am|pm)|([01]?\d|2[0-3]):([0-5]\d))\b",
+        details,
+        re.IGNORECASE,
+    )
+    start_time = "09:00"
+    if time_match:
+        if time_match.group(3):
+            hour = int(time_match.group(1)) % 12
+            if time_match.group(3).casefold() == "pm":
+                hour += 12
+            minute = int(time_match.group(2) or 0)
+        else:
+            hour, minute = int(time_match.group(4)), int(time_match.group(5))
+        start_time = f"{hour:02d}:{minute:02d}"
+        details = details[:time_match.start()] + " " + details[time_match.end():]
+
+    title = re.sub(r"\b(?:for|on|at|by)\s*$", "", details, flags=re.IGNORECASE)
+    title = re.sub(r"\s+", " ", title).strip(" ,:;.-'\"“”")
+    title = re.sub(r"^(?:a|an|the)\s+", "", title, flags=re.IGNORECASE)
+    if not title:
+        return None
+    return {"title": title[0].upper() + title[1:], "date": event_date, "start_time": start_time}
 
 
 def _format_web_search_result(query, result):
@@ -643,6 +729,32 @@ def api_stream_reply(conversation_id):
             )
             return
 
+        direct_event = (
+            None if active_document_id else _simple_calendar_request(latest_user_message)
+        )
+        if direct_event:
+            yield _sse("status", {"message": _tool_status("create_calendar_event")})
+            try:
+                result = workspace_tools.execute_tool(
+                    database_path,
+                    "create_calendar_event",
+                    direct_event,
+                    current_app.config.get("ULTRON_WORKSPACE_ROOT"),
+                )
+                saved_event = result["event"]
+                reply = f"Added “{saved_event['title']}” to your calendar for {saved_event['start_at'][:16]}."
+            except workspace_tools.ToolError as error:
+                reply = f"I couldn't add that calendar event: {error}"
+            yield _sse("token", {"token": reply})
+            finished_at = now_str()
+            message_id = _persist_reply(database_path, conversation_id, reply, finished_at, requested_document_id)
+            yield _sse(
+                "done",
+                {"id": message_id, "content": reply, "created_at": finished_at, "title": title,
+                 "document_id": requested_document_id, "file_type": attachment_meta["file_type"] if attachment_meta else ""},
+            )
+            return
+
         direct_query = _explicit_web_search_query(latest_user_message)
         if direct_query:
             if settings.get("web_search_enabled", "1") == "1":
@@ -709,20 +821,26 @@ def api_stream_reply(conversation_id):
                         break
                     tool_name, arguments = tool_call
                     yield _sse("status", {"message": _tool_status(tool_name)})
-                    try:
-                        result = workspace_tools.execute_tool(
-                            database_path, tool_name, arguments,
-                            current_app.config.get("ULTRON_WORKSPACE_ROOT"),
-                        )
-                    except workspace_tools.ToolError as error:
+                    if not _tool_matches_productivity_request(tool_name, latest_user_message):
                         result = {
-                            "error": str(error),
-                            "instruction": (
-                                "Correct this internally using the user's original natural-language request and local date context. "
-                                "Never ask the user for a date format. If the date was not specified, omit the optional date; "
-                                "if it is genuinely unclear, ask what day they mean in plain language."
-                            ),
+                            "error": "This tool does not match the kind of change the user requested.",
+                            "instruction": "Use the matching calendar or task tool for the user's original request. The rejected action was not saved.",
                         }
+                    else:
+                        try:
+                            result = workspace_tools.execute_tool(
+                                database_path, tool_name, arguments,
+                                current_app.config.get("ULTRON_WORKSPACE_ROOT"),
+                            )
+                        except workspace_tools.ToolError as error:
+                            result = {
+                                "error": str(error),
+                                "instruction": (
+                                    "Correct this internally using the user's original natural-language request and local date context. "
+                                    "Never ask the user for a date format. If the date was not specified, omit the optional date; "
+                                    "if it is genuinely unclear, ask what day they mean in plain language."
+                                ),
+                            }
                     if (
                         tool_name in {"create_task", "update_task", "delete_task", "create_calendar_event", "update_calendar_event", "delete_calendar_event"}
                         and "error" not in result
